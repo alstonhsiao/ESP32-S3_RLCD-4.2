@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Usage — RLCD Wireframe (400×300)</title>
+  <style>
+    :root {
+      --ink: #111;
+      --paper: #f4f1e8;
+      --frame: #2a2a2a;
+      --desk: #3d4a3a;
+      --muted: #5a5a5a;
+      --pixel: 1px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: linear-gradient(160deg, #2f3a2c 0%, #1a2218 100%);
+      color: #e8ebe4;
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+    }
+
+    header {
+      max-width: 1100px;
+      margin: 0 auto 20px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 1.35rem;
+      font-weight: 650;
+    }
+    .sub {
+      color: #b7c2ad;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      max-width: 70ch;
+    }
+    .sub code {
+      background: rgba(0,0,0,.25);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+
+    .toolbar {
+      max-width: 1100px;
+      margin: 0 auto 18px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .toolbar button {
+      appearance: none;
+      border: 1px solid #6a7a62;
+      background: #2a3528;
+      color: #e8ebe4;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .toolbar button.active {
+      background: #e8ebe4;
+      color: #1a2218;
+      border-color: #e8ebe4;
+      font-weight: 600;
+    }
+    .toolbar .hint {
+      color: #9aab90;
+      font-size: 0.8rem;
+    }
+
+    .board {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 28px;
+    }
+
+    .panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .panel h2 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #d5decb;
+    }
+    .panel .meta {
+      font-size: 0.78rem;
+      color: #9aab90;
+      line-height: 1.4;
+    }
+
+    /* Physical RLCD bezel */
+    .bezel {
+      width: 440px;
+      max-width: 100%;
+      background: var(--frame);
+      border-radius: 14px;
+      padding: 18px 20px 22px;
+      box-shadow:
+        0 12px 40px rgba(0,0,0,.45),
+        inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .bezel-label {
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #8a8a8a;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Exact 400×300 canvas — black on cream paper (software invert style) */
+    .screen {
+      width: 400px;
+      height: 300px;
+      max-width: 100%;
+      aspect-ratio: 400 / 300;
+      background: var(--paper);
+      color: var(--ink);
+      position: relative;
+      overflow: hidden;
+      image-rendering: pixelated;
+      font-family: "IBM Plex Mono", "SF Mono", "Menlo", "Consolas", monospace;
+      /* Scale down on narrow viewports while keeping ratio */
+      transform-origin: top left;
+    }
+    @media (max-width: 460px) {
+      .bezel { padding: 12px; }
+      .screen {
+        width: 100%;
+        height: auto;
+        min-height: 0;
+      }
+      .screen-inner {
+        /* Use CSS zoom via container; children use % of 400×300 via absolute layout in px scaled */
+      }
+    }
+
+    .screen-inner {
+      width: 400px;
+      height: 300px;
+      position: relative;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    /* Scale screen-inner to fit bezel on small screens */
+    .screen {
+      display: block;
+    }
+    .screen-scaler {
+      width: 400px;
+      height: 300px;
+      overflow: hidden;
+    }
+    @media (max-width: 460px) {
+      .screen-scaler {
+        width: min(400px, calc(100vw - 72px));
+        height: calc(min(400px, calc(100vw - 72px)) * 0.75);
+      }
+      .screen-inner {
+        transform: scale(calc(min(400px, 100vw - 72px) / 400));
+        transform-origin: top left;
+      }
+    }
+
+    /* --- Shared chrome --- */
+    .inv {
+      background: var(--ink);
+      color: var(--paper);
+    }
+    .hline {
+      position: absolute;
+      left: 8px;
+      width: 384px;
+      height: 1px;
+      background: var(--ink);
+    }
+    .hline.thick { height: 2px; }
+    .vline {
+      position: absolute;
+      width: 1px;
+      background: var(--ink);
+    }
+
+    .t {
+      position: absolute;
+      white-space: nowrap;
+      line-height: 1;
+    }
+    .f8  { font-size: 10px; font-weight: 500; letter-spacing: 0.02em; }
+    .f10 { font-size: 11px; font-weight: 500; }
+    .f12 { font-size: 13px; font-weight: 700; }
+    .f14 { font-size: 15px; font-weight: 700; }
+    .f18 { font-size: 20px; font-weight: 700; }
+    .f22 { font-size: 24px; font-weight: 700; }
+    .f32 { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+    .muted { opacity: 0.55; }
+
+    .bar {
+      position: absolute;
+      border: 1.5px solid var(--ink);
+      box-sizing: border-box;
+    }
+    .bar > i {
+      display: block;
+      height: 100%;
+      background: var(--ink);
+    }
+    .bar.outline > i {
+      background: transparent;
+      border-right: 1.5px solid var(--ink);
+      box-sizing: border-box;
+    }
+
+    .dot {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      border: 1.5px solid var(--ink);
+      box-sizing: border-box;
+    }
+    .dot.filled { background: var(--ink); }
+
+    .frame {
+      position: absolute;
+      border: 1.5px solid var(--ink);
+      box-sizing: border-box;
+    }
+
+    /* Bottom status bar y≈258–290 */
+    .bottom-line { top: 258px; }
+    .bat {
+      position: absolute;
+      right: 12px;
+      top: 265px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .bat-box {
+      width: 22px;
+      height: 11px;
+      border: 1.5px solid var(--ink);
+      position: relative;
+      box-sizing: border-box;
+    }
+    .bat-box::after {
+      content: "";
+      position: absolute;
+      right: -3px;
+      top: 2px;
+      width: 2px;
+      height: 5px;
+      background: var(--ink);
+    }
+    .bat-fill {
+      position: absolute;
+      left: 2px;
+      top: 2px;
+      bottom: 2px;
+      background: var(--ink);
+    }
+
+    .notes {
+      max-width: 1100px;
+      margin: 28px auto 0;
+      background: rgba(0,0,0,.22);
+      border: 1px solid #4a5a44;
+      border-radius: 12px;
+      padding: 16px 18px;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      color: #d5decb;
+    }
+    .notes h3 { margin: 0 0 8px; font-size: 0.95rem; color: #fff; }
+    .notes ul { margin: 0; padding-left: 1.2em; }
+    .notes li { margin-bottom: 4px; }
+    .notes code {
+      background: rgba(0,0,0,.3);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+
+    .hidden { display: none !important; }
+
+    /* Sparkline SVG */
+    .spark {
+      position: absolute;
+      overflow: visible;
+    }
+    .spark path {
+      fill: none;
+      stroke: var(--ink);
+      stroke-width: 1.5;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+    }
+    .spark .guide {
+      stroke: var(--ink);
+      stroke-width: 1;
+      stroke-dasharray: 3 3;
+      opacity: 0.35;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AI Usage — RLCD Wireframe</h1>
+    <p class="sub">
+      模擬 Waveshare ESP32-S3-RLCD-4.2 實際可繪區域 <code>400×300</code>、單色 1bpp、黑字白底（對齊 ClaudeSlate 軟體反顯）。
+      資料語意對齊 <code>https://aiusage-web.zeabur.app/</code> 的 <code>/data</code>：
+      <strong>週剩餘 % = 100 − used_weekly_pct</strong>。此頁僅設計稿，不連線、不燒錄。
+    </p>
+  </header>
+
+  <div class="toolbar">
+    <button type="button" class="active" data-view="all">全部頁面</button>
+    <button type="button" data-view="p0">P0 Home</button>
+    <button type="button" data-view="p1">P1 Detail</button>
+    <button type="button" data-view="p2">P2 Trend</button>
+    <button type="button" data-view="p3">P3 Empty</button>
+    <span class="hint">BOOT 短按翻頁 · 長按 3s 配網（之後韌體）</span>
+  </div>
+
+  <div class="board" id="board">
+
+    <!-- ========== PAGE 0: HOME ========== -->
+    <section class="panel" data-page="p0">
+      <h2>P0 · Home — 四源週剩餘</h2>
+      <p class="meta">一眼掃讀當前剩餘。左上時鐘；四格 2×2；底欄狀態/電量。數字用大字，bar 表週額度用掉程度（滿 bar = 用得多 = 剩餘少？）— 本設計 bar = <strong>剩餘比例</strong>，與網頁 y 軸一致。</p>
+      <div class="bezel">
+        <div class="bezel-label"><span>RLCD 400×300</span><span>P0 / 4</span></div>
+        <div class="screen-scaler">
+          <div class="screen-inner" aria-label="Home wireframe">
+            <!-- Clock -->
+            <div class="t f32" style="left:8px;top:8px;">19:45</div>
+            <div class="t f8" style="left:10px;top:48px;">TUE · AUG 4</div>
+            <div class="t f8" style="right:12px;top:12px;text-align:right;">AI USAGE</div>
+            <div class="t f8" style="right:12px;top:28px;text-align:right;">WEEK REMAIN</div>
+            <div class="t f8 muted" style="right:12px;top:48px;text-align:right;">96 pts · cloud</div>
+
+            <div class="hline thick" style="top:60px;"></div>
+
+            <!-- 2x2 cells -->
+            <!-- CLAUDE 56% remain (used 44) -->
+            <div class="t f10" style="left:12px;top:70px;">CLAUDE</div>
+            <div class="t f8 muted" style="left:12px;top:84px;">oauth</div>
+            <div class="t f22" style="left:12px;top:100px;">56%</div>
+            <div class="bar" style="left:12px;top:132px;width:172px;height:12px;"><i style="width:56%;"></i></div>
+            <div class="t f8" style="left:12px;top:150px;">RESET 2d 17h</div>
+
+            <div class="vline" style="left:200px;top:68px;height:100px;"></div>
+
+            <!-- CODEX 88% remain (used 12) -->
+            <div class="t f10" style="left:212px;top:70px;">CODEX</div>
+            <div class="t f8 muted" style="left:212px;top:84px;">app-server</div>
+            <div class="t f22" style="left:212px;top:100px;">88%</div>
+            <div class="bar" style="left:212px;top:132px;width:172px;height:12px;"><i style="width:88%;"></i></div>
+            <div class="t f8" style="left:212px;top:150px;">RESET 3d 16h</div>
+
+            <div class="hline" style="top:168px;"></div>
+
+            <!-- GROK 42% remain (used 58) -->
+            <div class="t f10" style="left:12px;top:176px;">GROK</div>
+            <div class="t f8 muted" style="left:12px;top:190px;">billing</div>
+            <div class="t f22" style="left:12px;top:206px;">42%</div>
+            <div class="bar" style="left:12px;top:238px;width:172px;height:10px;"><i style="width:42%;"></i></div>
+
+            <div class="vline" style="left:200px;top:174px;height:76px;"></div>
+
+            <!-- OLLAMA 70% remain (used 30) -->
+            <div class="t f10" style="left:212px;top:176px;">OLLAMA</div>
+            <div class="t f8 muted" style="left:212px;top:190px;">cookie</div>
+            <div class="t f22" style="left:212px;top:206px;">70%</div>
+            <div class="bar" style="left:212px;top:238px;width:172px;height:10px;"><i style="width:70%;"></i></div>
+
+            <!-- bottom -->
+            <div class="hline bottom-line"></div>
+            <div class="t f10" style="left:10px;top:272px;">live</div>
+            <div class="dot filled" style="left:40px;top:273px;"></div>
+            <div class="t f8 muted" style="left:54px;top:274px;">ingest 19:45</div>
+            <div class="bat">
+              <div class="bat-box"><div class="bat-fill" style="width:14px;"></div></div>
+              <span>72%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== PAGE 1: DETAIL ========== -->
+    <section class="panel" data-page="p1">
+      <h2>P1 · Detail — 單源細項 + 5h</h2>
+      <p class="meta">表格式列出四源：週剩餘、5h 剩餘（若有）、reset。對應 `/data` 的 <code>used_weekly_pct</code> / <code>used_5h_pct</code> / <code>resets_*</code>。低剩餘用反白列警示（例：Claude 5h 僅剩 3%）。</p>
+      <div class="bezel">
+        <div class="bezel-label"><span>RLCD 400×300</span><span>P1 / 4</span></div>
+        <div class="screen-scaler">
+          <div class="screen-inner">
+            <div class="t f12" style="left:10px;top:10px;">USAGE DETAIL</div>
+            <div class="t f8" style="right:12px;top:14px;">REMAIN = 100−USED</div>
+            <div class="hline thick" style="top:28px;"></div>
+
+            <!-- header -->
+            <div class="t f8" style="left:10px;top:38px;">SRC</div>
+            <div class="t f8" style="left:90px;top:38px;">WEEK</div>
+            <div class="t f8" style="left:200px;top:38px;">5H</div>
+            <div class="t f8" style="left:290px;top:38px;">RESET W</div>
+
+            <!-- row Claude — 5h critical: remain 3% -->
+            <div class="frame inv" style="left:8px;top:50px;width:384px;height:48px;"></div>
+            <div class="t f10 inv" style="left:12px;top:58px;background:transparent;color:var(--paper);">CLAUDE</div>
+            <div class="t f14 inv" style="left:90px;top:58px;color:var(--paper);">56%</div>
+            <div class="t f14 inv" style="left:200px;top:58px;color:var(--paper);">3%</div>
+            <div class="t f8 inv" style="left:290px;top:60px;color:var(--paper);">2d 17h</div>
+            <div class="t f8 inv" style="left:12px;top:80px;color:var(--paper);">5h reset 24m · WARN LOW</div>
+
+            <!-- Codex -->
+            <div class="t f10" style="left:12px;top:112px;">CODEX</div>
+            <div class="t f14" style="left:90px;top:110px;">88%</div>
+            <div class="t f10 muted" style="left:200px;top:114px;">—</div>
+            <div class="t f8" style="left:290px;top:114px;">3d 16h</div>
+            <div class="bar" style="left:90px;top:132px;width:100px;height:8px;"><i style="width:88%;"></i></div>
+
+            <div class="hline" style="top:148px;"></div>
+
+            <!-- Grok -->
+            <div class="t f10" style="left:12px;top:160px;">GROK</div>
+            <div class="t f14" style="left:90px;top:158px;">42%</div>
+            <div class="t f10 muted" style="left:200px;top:162px;">—</div>
+            <div class="t f8" style="left:290px;top:162px;">2d 3h</div>
+            <div class="bar" style="left:90px;top:180px;width:100px;height:8px;"><i style="width:42%;"></i></div>
+
+            <div class="hline" style="top:196px;"></div>
+
+            <!-- Ollama -->
+            <div class="t f10" style="left:12px;top:208px;">OLLAMA</div>
+            <div class="t f14" style="left:90px;top:206px;">70%</div>
+            <div class="t f14" style="left:200px;top:206px;">100%</div>
+            <div class="t f8" style="left:290px;top:210px;">5d 12h</div>
+            <div class="bar" style="left:90px;top:228px;width:100px;height:8px;"><i style="width:70%;"></i></div>
+
+            <div class="hline bottom-line"></div>
+            <div class="t f10" style="left:10px;top:272px;">live</div>
+            <div class="dot filled" style="left:40px;top:273px;"></div>
+            <div class="t f8 muted" style="left:54px;top:274px;">BOOT = next page</div>
+            <div class="bat">
+              <div class="bat-box"><div class="bat-fill" style="width:14px;"></div></div>
+              <span>72%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== PAGE 2: TREND ========== -->
+    <section class="panel" data-page="p2">
+      <h2>P2 · Trend — 週剩餘曲線（簡化）</h2>
+      <p class="meta">對應網頁 Chart.js 多線圖。RLCD 上改為：Y=剩餘 0–100、虛線每日額度格（100/7）、最多 4 條 1bpp 折線（實線/虛線/點線/雙線區分來源）。點數建議裁切最近 ~40 點，非整包 96。</p>
+      <div class="bezel">
+        <div class="bezel-label"><span>RLCD 400×300</span><span>P2 / 4</span></div>
+        <div class="screen-scaler">
+          <div class="screen-inner">
+            <div class="t f12" style="left:10px;top:10px;">WEEK REMAIN TREND</div>
+            <div class="t f8" style="right:12px;top:14px;">LAST 40 PTS</div>
+            <div class="hline thick" style="top:28px;"></div>
+
+            <!-- legend -->
+            <div class="t f8" style="left:10px;top:36px;">— CLAUDE</div>
+            <div class="t f8" style="left:100px;top:36px;">·· CODEX</div>
+            <div class="t f8" style="left:190px;top:36px;">-· GROK</div>
+            <div class="t f8" style="left:280px;top:36px;">== OLLAMA</div>
+
+            <!-- chart frame -->
+            <div class="frame" style="left:36px;top:52px;width:350px;height:170px;"></div>
+            <div class="t f8 muted" style="left:8px;top:52px;">100</div>
+            <div class="t f8 muted" style="left:14px;top:128px;">50</div>
+            <div class="t f8 muted" style="left:20px;top:210px;">0</div>
+
+            <svg class="spark" style="left:36px;top:52px;width:350px;height:170px;" viewBox="0 0 350 170" aria-hidden="true">
+              <!-- daily guides ~14.3% steps -->
+              <line class="guide" x1="0" y1="24" x2="350" y2="24" />
+              <line class="guide" x1="0" y1="48" x2="350" y2="48" />
+              <line class="guide" x1="0" y1="73" x2="350" y2="73" />
+              <line class="guide" x1="0" y1="97" x2="350" y2="97" />
+              <line class="guide" x1="0" y1="121" x2="350" y2="121" />
+              <line class="guide" x1="0" y1="146" x2="350" y2="146" />
+              <!-- Claude solid: start high remain, dip, recover-ish then to 56% = y = 170*(1-0.56)=74.8 -->
+              <path d="M5,20 L40,28 L75,35 L110,42 L145,55 L180,70 L215,88 L250,95 L285,82 L320,78 L345,75" />
+              <!-- Codex dotted-ish high remain -->
+              <path d="M5,12 L40,14 L75,15 L110,16 L145,18 L180,20 L215,22 L250,24 L285,22 L320,20 L345,18" stroke-dasharray="2 3" />
+              <!-- Grok mid -->
+              <path d="M5,50 L40,55 L75,60 L110,70 L145,85 L180,95 L215,100 L250,105 L285,100 L320,98 L345,99" stroke-dasharray="6 3" />
+              <!-- Ollama: was low remain (high used), recovered to 70% -->
+              <path d="M5,140 L40,130 L75,120 L110,110 L145,100 L180,90 L215,80 L250,70 L285,65 L320,58 L345,51" stroke-width="2.2" />
+            </svg>
+
+            <div class="t f8 muted" style="left:40px;top:228px;">08/01</div>
+            <div class="t f8 muted" style="left:180px;top:228px;">08/02</div>
+            <div class="t f8 muted" style="right:18px;top:228px;">08/04</div>
+
+            <div class="t f8" style="left:10px;top:244px;">NOW  C56  X88  G42  O70</div>
+
+            <div class="hline bottom-line"></div>
+            <div class="t f10" style="left:10px;top:272px;">live</div>
+            <div class="dot filled" style="left:40px;top:273px;"></div>
+            <div class="t f8 muted" style="left:54px;top:274px;">y = remain% · guides = 100/7</div>
+            <div class="bat">
+              <div class="bat-box"><div class="bat-fill" style="width:14px;"></div></div>
+              <span>72%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== PAGE 3: EMPTY / ERROR ========== -->
+    <section class="panel" data-page="p3">
+      <h2>P3 · Empty / Error 狀態</h2>
+      <p class="meta">無 Wi-Fi、HTTP 失敗、points=0、partial sources。儀表必須可讀，不能白屏。右圖示「無資料」；左圖示「部分來源失敗」可作 Home 變體。</p>
+      <div style="display:flex;flex-wrap:wrap;gap:20px;">
+        <div class="bezel">
+          <div class="bezel-label"><span>no data</span><span>state</span></div>
+          <div class="screen-scaler">
+            <div class="screen-inner">
+              <div class="t f12" style="left:10px;top:10px;">AI USAGE</div>
+              <div class="t f8 muted" style="right:12px;top:14px;">19:45</div>
+              <div class="hline thick" style="top:28px;"></div>
+              <div class="t f14" style="left:0;right:0;top:110px;text-align:center;width:400px;">NO DATA</div>
+              <div class="t f10 muted" style="left:0;right:0;top:140px;text-align:center;width:400px;">fetch /data failed</div>
+              <div class="t f8 muted" style="left:0;right:0;top:165px;text-align:center;width:400px;">retry in 60s · check WiFi</div>
+              <div class="hline bottom-line"></div>
+              <div class="t f10" style="left:10px;top:272px;">offline</div>
+              <div class="dot" style="left:58px;top:273px;"></div>
+              <div class="bat">
+                <div class="bat-box"><div class="bat-fill" style="width:14px;"></div></div>
+                <span>72%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bezel">
+          <div class="bezel-label"><span>partial</span><span>state</span></div>
+          <div class="screen-scaler">
+            <div class="screen-inner">
+              <div class="t f32" style="left:8px;top:8px;">19:45</div>
+              <div class="t f8" style="left:10px;top:48px;">TUE · AUG 4</div>
+              <div class="t f8" style="right:12px;top:12px;">AI USAGE</div>
+              <div class="t f8" style="right:12px;top:28px;">PARTIAL</div>
+              <div class="hline thick" style="top:60px;"></div>
+
+              <div class="t f10" style="left:12px;top:70px;">CLAUDE</div>
+              <div class="t f22" style="left:12px;top:100px;">56%</div>
+              <div class="bar" style="left:12px;top:132px;width:172px;height:12px;"><i style="width:56%;"></i></div>
+
+              <div class="vline" style="left:200px;top:68px;height:100px;"></div>
+              <div class="t f10" style="left:212px;top:70px;">CODEX</div>
+              <div class="t f22 muted" style="left:212px;top:100px;">--</div>
+              <div class="t f8 muted" style="left:212px;top:132px;">source fail</div>
+
+              <div class="hline" style="top:168px;"></div>
+              <div class="t f10" style="left:12px;top:176px;">GROK</div>
+              <div class="t f22" style="left:12px;top:206px;">42%</div>
+              <div class="bar" style="left:12px;top:238px;width:172px;height:10px;"><i style="width:42%;"></i></div>
+              <div class="vline" style="left:200px;top:174px;height:76px;"></div>
+              <div class="t f10" style="left:212px;top:176px;">OLLAMA</div>
+              <div class="t f22 muted" style="left:212px;top:206px;">--</div>
+
+              <div class="hline bottom-line"></div>
+              <div class="t f10" style="left:10px;top:272px;">partial</div>
+              <div class="dot" style="left:62px;top:273px;"></div>
+              <div class="t f8 muted" style="left:76px;top:274px;">2/4 sources</div>
+              <div class="bat">
+                <div class="bat-box"><div class="bat-fill" style="width:14px;"></div></div>
+                <span>72%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="notes">
+    <h3>設計決策（給後續韌體）</h3>
+    <ul>
+      <li><strong>語意</strong>：螢幕顯示「週剩餘 %」，與 aiusage-web / Telegram 一致；勿直接畫 used% 卻標成 remain。</li>
+      <li><strong>資料</strong>：<code>GET https://aiusage-web.zeabur.app/data</code>；實作時可只取最後一點做 P0/P1，P2 再取最近 N 點。</li>
+      <li><strong>頁面</strong>：P0 Home（四源）→ P1 Detail（5h+reset）→ P2 Trend →（可選）單源放大。BOOT 循環；KEY 可留空或切「顯示 used/remain」。</li>
+      <li><strong>警示</strong>：5h 或 week 剩餘 &lt; 10% 時該列反白（P1 Claude 列示意）。</li>
+      <li><strong>圖表</strong>：1bpp 用線型區分 4 源；Y 軸 0–100；可畫 100/7 虛線格。不做彩色、不做 Chart.js 還原。</li>
+      <li><strong>刷新</strong>：建議資料 60s、時鐘 10–30s 重繪（對齊 ClaudeSlate）。</li>
+      <li><strong>字型</strong>：U8g2 建議 <code>logisoso</code> 大數字 + <code>helvB12</code> / <code>6x13</code> / <code>helvR08</code> 小字（與 ClaudeSlate 同族）。</li>
+      <li><strong>不在此稿範圍</strong>：Wi-Fi portal、HTTPS cert、資料裁切 API、實際燒錄。</li>
+    </ul>
+  </div>
+
+  <script>
+    const buttons = document.querySelectorAll(".toolbar button[data-view]");
+    const panels = document.querySelectorAll(".panel[data-page]");
+
+    function setView(view) {
+      buttons.forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+      panels.forEach((p) => {
+        if (view === "all") p.classList.remove("hidden");
+        else p.classList.toggle("hidden", p.dataset.page !== view);
+      });
+    }
+
+    buttons.forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+  </script>
+</body>
+</html>
