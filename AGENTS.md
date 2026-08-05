@@ -139,27 +139,50 @@ assets/         # 字型、點陣圖
 | 顯示驅動 | Waveshare `ST7305_U8g2`（自官方 demo 複製，參考 ClaudeSlate） |
 | 板級 FQBN | `esp32:esp32:esp32s3`，USB CDC On Boot、Huge APP、Flash 16MB |
 | JSON / HTTP | `HTTPClient` + `ArduinoJson` |
+| Wi-Fi 配網 | **WiFiManager**（NVS 記住上次配網；可被 `secrets.h` 覆寫） |
+| 函式庫 | U8g2（≥ 2.36.19）、ArduinoJson、WiFiManager |
 | 備選（暫不採用） | ESP-IDF（後期產品化）、ESPHome（HA 向，不適複雜儀表 UI） |
 
-**本機現況（2026-08-04）**：已裝 `arduino-cli 1.5.0` + `esp32:esp32 3.3.7`；未偵測到 ESP-IDF / ESPHome / PlatformIO。有 USB 裝置 `ESP32 Family Device`（`/dev/cu.usbmodem11401`）。
+**本機工具（2026-08-04）**：`arduino-cli 1.5.0` + `esp32:esp32 3.3.7`；未偵測到 ESP-IDF / ESPHome / PlatformIO。
+
+| 項目 | 值 |
+| --- | --- |
+| USB 裝置 | `ESP32 Family Device`（PORT 以 `arduino-cli board list` 為準） |
+| 常見 PORT | `/dev/cu.usbmodem11401` |
+| 本機板 MAC | `a4:cb:8f:d0:6c:00`（識別用，非硬體通用規格） |
 
 韌體目錄：`firmware/` — Arduino sketch。  
 - ✅ `firmware/hello_rlcd/` — Hello 燒錄成功  
 - ✅ `firmware/aiusage_home/` — P0/P1/P2/P3 + BOOT 翻頁（P3 Daily Pace 2026-08-05）  
 UI 設計稿：`ui/aiusage-wireframe.html`  
-交接文件：`handoff20260804.md`（明天接著讀）
 
-### 燒錄指令速查
+### 燒錄 / 序列埠速查
 
 ```bash
 FQBN='esp32:esp32:esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,FlashSize=16M,PSRAM=opi'
 PORT='/dev/cu.usbmodem11401'   # board list 確認
 arduino-cli compile --fqbn "$FQBN" --libraries "$HOME/Documents/Arduino/libraries" firmware/aiusage_home
 arduino-cli upload -p "$PORT" --fqbn "$FQBN" firmware/aiusage_home
+arduino-cli monitor -p "$PORT" -c baudrate=115200
 ```
 
-操作：短按 **BOOT** 翻頁；長按 3s 配網（AP `AIUsage-RLCD`，僅 2.4G）。
+### 操作備忘
 
+| 操作 | 說明 |
+| --- | --- |
+| 換頁 | 短按 **BOOT**（靠 USB 側鍵，不是 PWR） |
+| 重配網 | 長按 BOOT ~3 秒 → 手機連 `AIUsage-RLCD` → `192.168.4.1` |
+| WiFi | 僅 **2.4 GHz**；WiFiManager 記在 NVS |
+| 寫死 WiFi | 複製 `secrets.h.example` → `secrets.h`（已 gitignore，勿提交） |
+| 看螢幕 | 需環境光（無背光） |
+
+### 開機復原檢查
+
+1. 讀本檔 §6–§7  
+2. USB 插板 → `arduino-cli board list`  
+3. 螢幕是否仍為 aiusage（否則重燒 `firmware/aiusage_home`）  
+4. 短按 BOOT 確認 P0→P1→P2→P3  
+5. 再決定 UX / 感測 / 穩定度工作
 ---
 
 ## 6.1 重要參考專案：ClaudeSlate（必讀）
@@ -174,7 +197,7 @@ arduino-cli upload -p "$PORT" --fqbn "$FQBN" firmware/aiusage_home
 | 板級設定 | ESP32S3 Dev Module、USB CDC On Boot、Huge APP、Flash 16MB；`esp32 core 3.x` |
 | 資料架構 | **PC 端 Python proxy** → 精簡 JSON → 螢幕 Wi-Fi 輪詢（非瀏覽器渲染網頁） |
 | 顯示內容 | 8 頁：時鐘/天氣、Claude/Codex 用量、7 天柱圖、週趨勢、室內溫濕度、電池 |
-| 可借鏡 | 400×300 單色版面、進度條/柱圖/折線、BOOT 翻頁、captive portal 配網、UDP 發現 proxy、軟體反顯黑字白底 |
+| 可借鏡 | 400×300 單色版面、進度條/柱圖/折線、BOOT 翻頁、captive portal 配網、UDP 發現 proxy、軟體反顯黑字白底（`INVERT_DISPLAY`） |
 
 可複用概念（不要整包抄，按本專案需求裁切）：
 
@@ -188,18 +211,20 @@ arduino-cli upload -p "$PORT" --fqbn "$FQBN" firmware/aiusage_home
 
 ---
 
-## 6.2 資料源：aiusage-web（已實作 P0–P2）
+## 6.2 資料源：aiusage-web（已實作 P0–P3）
 
 | 項目 | 內容 |
 | --- | --- |
-| URL | https://aiusage-web.zeabur.app/ |
+| Web UI | https://aiusage-web.zeabur.app/ |
 | API | `GET /data`、`GET /health` |
 | 語意 | **週剩餘 % = 100 − used_weekly_pct** |
 | 來源 | `claude` / `codex` / `grok` / `ollama` |
 | 韌體 | `firmware/aiusage_home/` |
+| 上游 ingest（非本 repo） | 本機 `keyboardMaestro/autousage` |
 
-**注意**：不可在 RLCD 上原樣渲染彩色網頁；已改為 U8g2 單色儀表。全量 JSON ~60KB，後續可考慮精簡 API。
+**頁面**：P0 Home（時鐘 + 四源）→ P1 Detail（WEEK / 5H / RESET，低剩餘反白）→ P2 Trend（最多 40 點折線）→ P3 Daily Pace（24h 日額 / 週結束 / 5h 結束）。
 
+**注意**：不可在 RLCD 上原樣渲染彩色網頁；已改為 U8g2 單色儀表。全量 JSON ~60KB，後續可考慮精簡 API（最新 + N 點）。
 ---
 
 ## 6.3 電池續航實測（18650）
@@ -237,22 +262,40 @@ arduino-cli upload -p "$PORT" --fqbn "$FQBN" firmware/aiusage_home
 | 2026-08-04 | SPEC 基建；ClaudeSlate 參考；鎖定 Arduino+U8g2 |
 | 2026-08-04 | wireframe；Hello RLCD 燒錄 OK |
 | 2026-08-04 | aiusage_home P0/P1/P2 + BOOT 翻頁；使用者確認完成 |
-| 2026-08-04 | 寫 `handoff20260804.md`；整理 README/AGENTS；準備 push |
+| 2026-08-04 | 整理 README/AGENTS；session handoff 初版 |
 | 2026-08-05 | P3 Daily Pace（表格式 24h 日額 / 週結束 / 5h 結束）；wireframe P3/P3b |
 | 2026-08-06 | 電池短測：87%→77% / 8.75h → 估滿電約 3.6 天；長測待做（§6.3） |
+| 2026-08-06 | 將 `handoff20260804.md` 要點併入本檔與 README 後刪除 |
 
-### 待辦（給後續 agent — 見 handoff）
+### 待辦（給後續 agent）
 
-- [x] 框架 / Hello / aiusage 多頁  
+- [x] 框架 / Hello / aiusage 多頁（P0–P2）  
 - [x] P3 建議一天使用額度（方案 B 表格）  
 - [ ] **電池長測**（滿電→低電完整週期；見 §6.3）  
-- [ ] UX 打磨（P1 密度、P2 多線、反顯）  
-- [ ] 離線/HTTPS 穩定度  
-- [ ] SHTC3 室溫；KEY 第二操作  
-- [ ] 可選：天氣 / 本機 proxy  
+- [ ] **UX 打磨**
+  - P1 四列在 300 高是否擁擠 → 微調間距/字級  
+  - P2 四線重疊可讀性 → 可改「單源切換」或只畫 2 源  
+  - 軟體反顯（黑字白底）：參考 ClaudeSlate `INVERT_DISPLAY`  
+- [ ] **穩定度**
+  - HTTPS / 大 JSON（~60KB）記憶體與 timeout  
+  - 離線/stale 狀態文案與重試  
+  - 可選：後端精簡 API（最新 + N 點）  
+- [ ] **功能擴充**
+  - 板載 SHTC3 溫濕度（ClaudeSlate 底欄 Room）  
+  - KEY（GPIO18）第二操作（只刷資料、鎖定某頁等）  
+  - 天氣（Open-Meteo）或 ClaudeSlate 式本機 proxy  
+- [ ] **工程**（可選）
+  - 確認 GitHub remote、`secrets.h` 未進版控  
+  - `firmware/aiusage_home` 拆檔（ui / net / data）  
 
-**明天開場**：先讀 `handoff20260804.md`。
+### 刻意未做 / 不做假設
 
+- 未在螢幕上「開瀏覽器」渲染網頁（技術上不可行）  
+- 未上 ESP-IDF / ESPHome 主線  
+- 未做語音 / 喇叭  
+- 未提交 `firmware/**/secrets.h`  
+
+**開場**：讀本檔 §6–§7，再依待辦選一項開工。
 ---
 
 ## 8. 回應與協作風格

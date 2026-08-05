@@ -4,19 +4,20 @@
 
 硬體像「可快速刷新的電子紙」：無背光、靠環境光可讀、單色 300×400、板載 Wi-Fi/BLE、雙麥克風、喇叭、溫濕度、RTC 與 18650 電池。
 
-**最新進度 handoff：** [`handoff20260804.md`](handoff20260804.md)
+**進度與 agent 約定：** [`AGENTS.md`](AGENTS.md)（§6 技術棧 / §7 進度與待辦）
 
 ---
 
-## 現況（2026-08-04）
+## 現況（2026-08-06）
 
 | 項目 | 狀態 |
 | --- | --- |
 | 框架 | **Arduino + U8g2**（已鎖定） |
 | Hello 螢幕 | ✅ `firmware/hello_rlcd` |
-| AI 用量儀表 | ✅ `firmware/aiusage_home` — P0/P1/P2 已上板可用 |
-| 資料源 | `https://aiusage-web.zeabur.app/data`（週剩餘 %） |
-| 換頁 | **短按 BOOT**；長按 3s 配網 |
+| AI 用量儀表 | ✅ `firmware/aiusage_home` — P0/P1/P2/P3 已上板可用 |
+| 資料源 | `https://aiusage-web.zeabur.app/data`（週剩餘 % = 100 − used） |
+| 換頁 | **短按 BOOT**；長按 3s 配網（AP `AIUsage-RLCD`，僅 2.4 GHz） |
+| 電池粗估 | 短測 ~1.14 %/h → 滿電約 3.5–4 天（長測待做，見 AGENTS §6.3） |
 
 ### 燒錄
 
@@ -26,10 +27,11 @@ PORT='/dev/cu.usbmodem11401'   # arduino-cli board list
 
 arduino-cli compile --fqbn "$FQBN" --libraries "$HOME/Documents/Arduino/libraries" firmware/aiusage_home
 arduino-cli upload -p "$PORT" --fqbn "$FQBN" firmware/aiusage_home
+arduino-cli monitor -p "$PORT" -c baudrate=115200
 ```
 
-WiFi：首次用 AP **`AIUsage-RLCD`** 配網（僅 2.4 GHz），或填 `firmware/aiusage_home/secrets.h`（gitignore，見 `secrets.h.example`）。
-
+WiFi：首次用 AP **`AIUsage-RLCD`** 配網（僅 2.4 GHz；WiFiManager 記在 NVS），或複製 `secrets.h.example` → `secrets.h`（已 gitignore）。
+BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
 ---
 
 ## 硬體速覽
@@ -85,30 +87,30 @@ WiFi：首次用 AP **`AIUsage-RLCD`** 配網（僅 2.4 GHz），或填 `firmwar
 - [x] 框架 Arduino + U8g2
 - [x] aiusage wireframe（`ui/`）
 - [x] Hello RLCD
-- [x] aiusage P0/P1/P2 + BOOT 翻頁
+- [x] aiusage P0/P1/P2/P3 + BOOT 翻頁
 
 ### Phase 1 — 打磨與感測（下一步）
 
-- [ ] UX：P1 間距、P2 多線可讀性、反顯選項
-- [ ] 離線/stale 與 HTTPS 穩定度
+- [ ] 電池長測（完整放電週期）
+- [ ] UX：P1 間距、P2 多線可讀性、反顯（`INVERT_DISPLAY`）
+- [ ] 離線/stale 與 HTTPS 穩定度（大 JSON ~60KB）
 - [ ] SHTC3 室溫濕度
 - [ ] KEY 第二操作
 
-### Phase 2+ 
+### Phase 2+
 
 - [ ] 天氣 / 本機 proxy（ClaudeSlate 式）
 - [ ] MQTT / HA
 - [ ] 語音（可選）
-
+- [ ] 可選：`aiusage_home` 拆檔（ui / net / data）
 ---
 
 ## 目錄結構
 
 ```text
 .
-├── AGENTS.md
+├── AGENTS.md                 # agent 約定、技術棧、進度與待辦
 ├── README.md
-├── handoff20260804.md        # 最新交接
 ├── .gitignore                # 含 firmware/**/secrets.h
 ├── docs/specs/               # 硬體 SPEC + PDF
 ├── ui/                       # 單色 wireframe
@@ -117,7 +119,6 @@ WiFi：首次用 AP **`AIUsage-RLCD`** 配網（僅 2.4 GHz），或填 `firmwar
     ├── hello_rlcd/           # 最小顯示驗證
     └── aiusage_home/         # AI 週剩餘儀表（主 sketch）
 ```
-
 ---
 
 ## 顯示驅動速查
@@ -161,4 +162,4 @@ void setup() {
 4. PSRAM：**octal 80 MHz**  
 5. 勿提交 `secrets.h`  
 
-Agent 約定：[`AGENTS.md`](AGENTS.md)。明天接著做：[`handoff20260804.md`](handoff20260804.md)。
+Agent 約定與待辦：[`AGENTS.md`](AGENTS.md) §6–§7。
