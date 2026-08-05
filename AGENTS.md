@@ -145,7 +145,7 @@ assets/         # 字型、點陣圖
 
 韌體目錄：`firmware/` — Arduino sketch。  
 - ✅ `firmware/hello_rlcd/` — Hello 燒錄成功  
-- ✅ `firmware/aiusage_home/` — P0/P1/P2 + BOOT 翻頁（使用者 2026-08-04 確認可用）  
+- ✅ `firmware/aiusage_home/` — P0/P1/P2/P3 + BOOT 翻頁（P3 Daily Pace 2026-08-05）  
 UI 設計稿：`ui/aiusage-wireframe.html`  
 交接文件：`handoff20260804.md`（明天接著讀）
 
@@ -210,10 +210,12 @@ arduino-cli upload -p "$PORT" --fqbn "$FQBN" firmware/aiusage_home
 | 2026-08-04 | wireframe；Hello RLCD 燒錄 OK |
 | 2026-08-04 | aiusage_home P0/P1/P2 + BOOT 翻頁；使用者確認完成 |
 | 2026-08-04 | 寫 `handoff20260804.md`；整理 README/AGENTS；準備 push |
+| 2026-08-05 | P3 Daily Pace（表格式 24h 日額 / 週結束 / 5h 結束）；wireframe P3/P3b |
 
 ### 待辦（給後續 agent — 見 handoff）
 
 - [x] 框架 / Hello / aiusage 多頁  
+- [x] P3 建議一天使用額度（方案 B 表格）  
 - [ ] UX 打磨（P1 密度、P2 多線、反顯）  
 - [ ] 離線/HTTPS 穩定度  
 - [ ] SHTC3 室溫；KEY 第二操作  

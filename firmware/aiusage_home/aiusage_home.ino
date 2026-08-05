@@ -8,6 +8,7 @@
  *   P0 Home   — clock + 2x2 week remain
  *   P1 Detail — week / 5h / reset table
  *   P2 Trend  — last N remain% polylines (4 series, thick styles)
+ *   P3 Pace   — 24h budget table (remain/days, week end, 5h end)
  * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD)
  *
  * Board: ESP32S3 Dev Module | CDC On Boot | Huge APP | Flash 16MB | OPI PSRAM
@@ -35,7 +36,7 @@
 
 #define W 400
 #define H 300
-#define PAGE_COUNT 3
+#define PAGE_COUNT 4
 #define TREND_N 40
 
 static const char* DATA_URL = "https://aiusage-web.zeabur.app/data";
@@ -180,6 +181,46 @@ static void fmtResetLine(long resetUnix, char* out, size_t n) {
   if (strcmp(body, "--") == 0) snprintf(out, n, "RESET --");
   else if (strcmp(body, "now") == 0) snprintf(out, n, "RESET now");
   else snprintf(out, n, "RESET %s", body);
+}
+
+// Days until reset (fractional). -1 if unknown.
+static float daysUntil(long resetUnix) {
+  if (resetUnix <= 0) return -1.0f;
+  time_t now = time(nullptr);
+  if (now < 100000) return -1.0f;
+  long s = resetUnix - (long)now;
+  if (s <= 0) return 0.0f;
+  return (float)s / 86400.0f;
+}
+
+// Local HH:MM from epoch (device TZ via configTime).
+static void fmtClockHm(long resetUnix, char* out, size_t n) {
+  if (resetUnix <= 0) {
+    snprintf(out, n, "--");
+    return;
+  }
+  time_t t = (time_t)resetUnix;
+  struct tm tm;
+  localtime_r(&t, &tm);
+  snprintf(out, n, "%02d:%02d", tm.tm_hour, tm.tm_min);
+}
+
+// Suggested 24h spend % = week remain% / days left. -1 if N/A.
+static float dailyBudgetPct(const SourceUi& s) {
+  if (!s.present || !s.ok || s.remainWeek < 0.0f || s.resetWeek <= 0) return -1.0f;
+  float d = daysUntil(s.resetWeek);
+  if (d < 0.0f) return -1.0f;
+  if (d < 0.05f) d = 0.05f;  // avoid explode near reset
+  return s.remainWeek / d;
+}
+
+// Pace vs ~100/7 daily (ASCII only — U8g2 Latin fonts).
+// SLOW = under-using (high daily budget left), FAST = over-using.
+static const char* paceLabel(float daily) {
+  if (daily < 0.0f) return "--";
+  if (daily > 18.0f) return "SLOW";
+  if (daily < 12.0f) return "FAST";
+  return "OK";
 }
 
 static void shortOrigin(const char* origin, char* out, size_t n) {
@@ -697,6 +738,105 @@ static void renderTrend() {
   u8g2.sendBuffer();
 }
 
+// P3 — table: daily budget = week_remain% / days_until_weekly_reset
+static void renderPace() {
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
+  gBat = readBatteryPct();
+
+  u8g2.setFont(u8g2_font_helvB12_tf);
+  u8g2.drawStr(10, 18, "24H BUDGET");
+  u8g2.setFont(u8g2_font_6x13_tf);
+  strRight(W - 12, 16, "remain/days");
+  u8g2.drawHLine(8, 24, W - 16);
+  u8g2.drawHLine(8, 25, W - 16);
+
+  // column headers
+  u8g2.setFont(u8g2_font_6x13_tf);
+  u8g2.drawStr(10, 40, "SRC");
+  u8g2.drawStr(88, 40, "DAY");
+  u8g2.drawStr(160, 40, "WEEK");
+  u8g2.drawStr(230, 40, "W END");
+  u8g2.drawStr(320, 40, "5H END");
+
+  // precompute daily budgets; invert row with highest day% (opportunity)
+  float day[4];
+  float best = -1.0f;
+  int bestIdx = -1;
+  for (int i = 0; i < 4; i++) {
+    day[i] = dailyBudgetPct(gSnap.src[i]);
+    if (day[i] > best) {
+      best = day[i];
+      bestIdx = i;
+    }
+  }
+
+  for (int i = 0; i < 4; i++) {
+    const SourceUi& s = gSnap.src[i];
+    int y0 = 48 + i * 50;
+    bool hi = (i == bestIdx && day[i] >= 0.0f);
+
+    if (hi) {
+      u8g2.setDrawColor(1);
+      u8g2.drawBox(8, y0 - 2, 384, 46);
+      u8g2.setDrawColor(0);
+    } else {
+      u8g2.setDrawColor(1);
+    }
+
+    u8g2.setFont(u8g2_font_helvB10_tf);
+    u8g2.drawStr(12, y0 + 12, s.name);
+    u8g2.setFont(u8g2_font_6x13_tf);
+    u8g2.drawStr(12, y0 + 28, paceLabel(day[i]));
+
+    char dayS[12], weekS[12], wDays[12], wClk[8], hCd[12], hClk[8];
+
+    if (day[i] < 0.0f) snprintf(dayS, sizeof(dayS), "--");
+    else snprintf(dayS, sizeof(dayS), "%.0f%%", day[i]);
+
+    if (!s.present || !s.ok || s.remainWeek < 0.0f) snprintf(weekS, sizeof(weekS), "--");
+    else snprintf(weekS, sizeof(weekS), "%.0f%%", s.remainWeek);
+
+    float dLeft = daysUntil(s.resetWeek);
+    if (dLeft < 0.0f) {
+      snprintf(wDays, sizeof(wDays), "--");
+      snprintf(wClk, sizeof(wClk), "--");
+    } else {
+      if (dLeft < 1.0f) snprintf(wDays, sizeof(wDays), "%.0fh", dLeft * 24.0f);
+      else snprintf(wDays, sizeof(wDays), "%.1fd", dLeft);
+      fmtClockHm(s.resetWeek, wClk, sizeof(wClk));
+    }
+
+    if (!s.present || !s.ok || s.reset5h <= 0 || s.remain5h < 0.0f) {
+      snprintf(hCd, sizeof(hCd), "--");
+      snprintf(hClk, sizeof(hClk), "--");
+    } else {
+      fmtReset(s.reset5h, hCd, sizeof(hCd));
+      fmtClockHm(s.reset5h, hClk, sizeof(hClk));
+    }
+
+    u8g2.setFont(u8g2_font_helvB12_tf);
+    u8g2.drawStr(88, y0 + 18, dayS);
+    u8g2.setFont(u8g2_font_helvB10_tf);
+    u8g2.drawStr(160, y0 + 18, weekS);
+
+    u8g2.setFont(u8g2_font_6x13_tf);
+    u8g2.drawStr(230, y0 + 12, wDays);
+    u8g2.drawStr(230, y0 + 28, wClk);
+    u8g2.drawStr(320, y0 + 12, hCd);
+    u8g2.drawStr(320, y0 + 28, hClk);
+
+    if (hi) {
+      u8g2.setDrawColor(1);
+    } else if (i < 3) {
+      u8g2.drawHLine(8, y0 + 44, W - 16);
+    }
+  }
+
+  drawBottomBar("DAY=Wrem/days");
+  u8g2.sendBuffer();
+}
+
 static void render() {
   if ((gLink == LinkState::WifiSetup || gLink == LinkState::Connecting || gLink == LinkState::Booting)
       && !gSnap.valid) {
@@ -710,7 +850,8 @@ static void render() {
 
   if (gPage == 0) renderHome();
   else if (gPage == 1) renderDetail();
-  else renderTrend();
+  else if (gPage == 2) renderTrend();
+  else renderPace();
 }
 
 // ---- WiFi ----
@@ -814,7 +955,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("aiusage_home: boot (P0/P1/P2 + auto 1m / BOOT nav)");
+  Serial.println("aiusage_home: boot (P0-P3 + auto 1m / BOOT nav)");
 
   pinMode(BTN_BOOT, INPUT_PULLUP);
   gLastBtn = digitalRead(BTN_BOOT);
