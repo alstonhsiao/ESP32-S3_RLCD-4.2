@@ -4,11 +4,12 @@
  * Data: GET https://aiusage-web.zeabur.app/data
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
- * Pages (auto every 60s; short-press BOOT advances + resets timer):
+ * Pages (auto every 5m; short-press BOOT advances + resets timer):
  *   P0 Home   — clock + 2x2 week remain
  *   P1 Detail — week / 5h / reset table
  *   P2 Trend  — last N remain% polylines (4 series, thick styles)
  *   P3 Pace   — 24h budget table (remain/days, week end, 5h end)
+ * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes
  * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD)
  *
  * Board: ESP32S3 Dev Module | CDC On Boot | Huge APP | Flash 16MB | OPI PSRAM
@@ -40,10 +41,11 @@
 #define TREND_N 40
 
 static const char* DATA_URL = "https://aiusage-web.zeabur.app/data";
-static const uint32_t POLL_MS = 300000;  // fetch cloud data every 5 minutes
-static const uint32_t RENDER_MS = 30000;     // clock / battery refresh while parked on a page
-static const uint32_t AUTO_PAGE_MS = 60000;  // auto flip every 1 minute
+static const uint32_t POLL_MS = 900000;      // fetch cloud data every 15 minutes
+static const uint32_t RENDER_MS = 60000;     // fallback redraw if NTP not ready
+static const uint32_t AUTO_PAGE_MS = 300000; // auto flip every 5 minutes
 static const uint32_t LONG_PRESS_MS = 3000;
+static const uint32_t WIFI_CONNECT_MS = 20000;
 
 U8G2_ST7305_300X400_F_4W_HW_SPI u8g2(U8G2_R1, RLCD_CS, RLCD_DC, RLCD_RST);
 
@@ -90,8 +92,26 @@ static char gLastErr[48] = "";
 static int gLastBtn = HIGH;
 static uint32_t gBtnDownMs = 0;
 static bool gLongPressFired = false;
+static int gLastDrawnMinuteKey = -1;  // hour*60+min; skip full redraw if unchanged
 
 static void render();  // forward
+static bool haveLocalTime(struct tm* t);
+static bool ensureWifi(uint32_t timeoutMs = WIFI_CONNECT_MS);
+static void radioOff();
+
+static void noteDrawnMinute() {
+  struct tm t;
+  if (haveLocalTime(&t)) gLastDrawnMinuteKey = t.tm_hour * 60 + t.tm_min;
+}
+
+static bool minuteChanged() {
+  struct tm t;
+  if (!haveLocalTime(&t)) return false;
+  int key = t.tm_hour * 60 + t.tm_min;
+  if (key == gLastDrawnMinuteKey) return false;
+  gLastDrawnMinuteKey = key;
+  return true;
+}
 
 static void advancePage(uint32_t now, const char* reason) {
   gPage = (gPage + 1) % PAGE_COUNT;
@@ -99,6 +119,7 @@ static void advancePage(uint32_t now, const char* reason) {
   gLastRender = now;
   Serial.printf("page → P%d (%s)\n", gPage, reason);
   render();
+  noteDrawnMinute();
 }
 
 // ---- helpers ----
@@ -278,7 +299,9 @@ static const char* linkLabel(LinkState s) {
     case LinkState::Booting: return "boot";
     case LinkState::WifiSetup: return "setup";
     case LinkState::Connecting: return "wifi...";
-    case LinkState::Online: return "live";
+    case LinkState::Online:
+      // After poll we turn radio off; still show last-good data as idle.
+      return (WiFi.status() == WL_CONNECTED) ? "live" : "idle";
     case LinkState::Offline: return "offline";
     case LinkState::HttpError: return "http err";
     case LinkState::ParseError: return "parse";
@@ -854,33 +877,89 @@ static void render() {
   else renderPace();
 }
 
-// ---- WiFi ----
+// ---- WiFi (connect only for poll / portal; radio OFF between) ----
 static bool secretsConfigured() {
   if (!WIFI_SSID[0]) return false;
   if (strcmp(WIFI_SSID, "YOUR_WIFI_SSID") == 0) return false;
   return true;
 }
 
+static void radioOff() {
+  if (WiFi.getMode() == WIFI_OFF) return;
+  WiFi.disconnect(true);
+  delay(30);
+  WiFi.mode(WIFI_OFF);
+  Serial.println("WiFi radio off");
+}
+
+static bool ensureWifi(uint32_t timeoutMs) {
+  if (WiFi.status() == WL_CONNECTED) return true;
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(true);
+
+  if (secretsConfigured()) {
+    Serial.printf("WiFi begin SSID=%s\n", WIFI_SSID);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+  } else {
+    // NVS credentials from prior WiFiManager session
+    Serial.println("WiFi begin (saved creds)");
+    WiFi.begin();
+  }
+
+  uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
+    delay(200);
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("WiFi OK %s\n", WiFi.localIP().toString().c_str());
+    return true;
+  }
+  Serial.println("WiFi connect fail");
+  return false;
+}
+
+// Connect → GET /data → always radio off after (success or fail).
+static void pollCycle() {
+  if (!ensureWifi(WIFI_CONNECT_MS)) {
+    if (!gSnap.valid) {
+      gLink = LinkState::Offline;
+      snprintf(gLastErr, sizeof(gLastErr), "wifi down");
+    } else {
+      // Keep showing last snapshot; Online→idle in linkLabel when radio off.
+      snprintf(gLastErr, sizeof(gLastErr), "wifi fail");
+    }
+    radioOff();
+    return;
+  }
+
+  pollData();
+  radioOff();
+}
+
 static void startWifiPortal() {
   gLink = LinkState::WifiSetup;
   drawStatusScreen("WIFI SETUP", "AP: AIUsage-RLCD", "open 192.168.4.1");
+  WiFi.mode(WIFI_STA);  // portal needs radio on
   WiFiManager wm;
   wm.setConfigPortalTimeout(300);
   bool ok = wm.startConfigPortal("AIUsage-RLCD");
   if (!ok) {
-    // try keep existing STA if any
     if (WiFi.status() != WL_CONNECTED) {
-      gLink = LinkState::Offline;
+      if (!gSnap.valid) gLink = LinkState::Offline;
       snprintf(gLastErr, sizeof(gLastErr), "portal timeout");
     } else {
-      gLink = LinkState::Online;
+      configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov", "ntp.aliyun.com");
+      pollData();
     }
   } else {
     Serial.printf("WiFi OK %s\n", WiFi.localIP().toString().c_str());
     configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov", "ntp.aliyun.com");
     pollData();
   }
+  radioOff();
   render();
+  noteDrawnMinute();
 }
 
 static void connectWiFi() {
@@ -888,25 +967,14 @@ static void connectWiFi() {
   render();
 
   if (secretsConfigured()) {
-    Serial.printf("WiFi begin SSID=%s\n", WIFI_SSID);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
-      delay(250);
-      Serial.print('.');
-    }
-    Serial.println();
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.printf("WiFi OK %s\n", WiFi.localIP().toString().c_str());
-      return;
-    }
+    if (ensureWifi(WIFI_CONNECT_MS)) return;
     Serial.println("WiFi secrets failed, opening portal");
   }
 
   // Prefer saved credentials via autoConnect (NVS from previous portal)
   gLink = LinkState::WifiSetup;
   render();
+  WiFi.mode(WIFI_STA);
   WiFiManager wm;
   wm.setConfigPortalTimeout(300);
   bool ok = wm.autoConnect("AIUsage-RLCD");
@@ -914,6 +982,7 @@ static void connectWiFi() {
     gLink = LinkState::Offline;
     snprintf(gLastErr, sizeof(gLastErr), "portal timeout");
     Serial.println("WiFi portal failed");
+    radioOff();
     return;
   }
   Serial.printf("WiFi OK %s\n", WiFi.localIP().toString().c_str());
@@ -955,7 +1024,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("aiusage_home: boot (P0-P3 + auto 1m / BOOT nav)");
+  Serial.println("aiusage_home: boot (P0-P3 / 5m page / 15m poll / radio-off)");
 
   pinMode(BTN_BOOT, INPUT_PULLUP);
   gLastBtn = digitalRead(BTN_BOOT);
@@ -975,11 +1044,14 @@ void setup() {
     gLink = LinkState::Connecting;
     render();
     pollData();
+    radioOff();  // radio only for poll; time keeps running locally
   } else {
     gLink = LinkState::Offline;
+    radioOff();
   }
 
   render();
+  noteDrawnMinute();
   gLastPoll = gLastRender = gLastPageChange = millis();
   Serial.println("aiusage_home: setup done");
 }
@@ -996,20 +1068,19 @@ void loop() {
   }
 
   if (now - gLastPoll >= POLL_MS) {
-    if (WiFi.status() != WL_CONNECTED) {
-      WiFi.reconnect();
-      gLink = LinkState::Offline;
-      snprintf(gLastErr, sizeof(gLastErr), "wifi down");
-    } else {
-      pollData();
-    }
+    pollCycle();  // ensureWifi → GET → radioOff
     render();
+    noteDrawnMinute();
     gLastPoll = gLastRender = now;
-  } else if (now - gLastRender >= RENDER_MS) {
-    // refresh clock / battery without changing page
+  } else if (minuteChanged()) {
+    // Clock/battery: full redraw only when local minute ticks
+    render();
+    gLastRender = now;
+  } else if (gLastDrawnMinuteKey < 0 && (now - gLastRender >= RENDER_MS)) {
+    // No NTP yet: occasional redraw so UI is not frozen forever
     render();
     gLastRender = now;
   }
 
-  delay(15);
+  delay(50);
 }

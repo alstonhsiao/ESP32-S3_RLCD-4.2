@@ -26,7 +26,8 @@ BOOT 是板上靠近 USB 的 **BOOT** 側鍵（GPIO0），不是 PWR。
 | --- | --- |
 | 版面 | 對齊 `ui/aiusage-wireframe.html` |
 | 來源 | Claude / Codex / Grok / Ollama |
-| 刷新 | 資料 5 分鐘、畫面 30s（時鐘）、自動翻頁 1 分鐘 |
+| 刷新 | 資料 **15 分鐘**、自動翻頁 **5 分鐘**、時鐘 **分鐘變才重畫** |
+| Wi‑Fi | **間歇**：只在拉 `/data`（或配網）時連線，結束後 `WIFI_OFF`；底欄 `live`=連線中、`idle`=有資料但 radio 關 |
 | P3 語意 | 對齊使用報告「建議一天用」；% 皆剩餘；無 5h 窗顯示 `--` |
 | 時鐘 | NTP（UTC+8） |
 | 電量 | GPIO4 ADC（有 18650 才顯示） |
