@@ -4,11 +4,11 @@
 
 硬體像「可快速刷新的電子紙」：無背光、靠環境光可讀、單色 300×400、板載 Wi-Fi/BLE、雙麥克風、喇叭、溫濕度、RTC 與 18650 電池。
 
-**進度與 agent 約定：** [`AGENTS.md`](AGENTS.md)（§6 技術棧 / §7 進度與待辦）
+**進度與 agent 約定：** [`AGENTS.md`](AGENTS.md)（先看快速地圖；進度與待辦見 [`docs/power-and-progress.md`](docs/power-and-progress.md)）
 
 ---
 
-## 現況（2026-08-06）
+## 現況（2026-08-07）
 
 | 項目 | 狀態 |
 | --- | --- |
@@ -17,7 +17,7 @@
 | AI 用量儀表 | ✅ `firmware/aiusage_home` — P0/P1/P2/P3 已上板可用 |
 | 資料源 | `https://aiusage-web.zeabur.app/data`（週剩餘 % = 100 − used） |
 | 換頁 | **短按 BOOT**；長按 3s 配網（AP `AIUsage-RLCD`，僅 2.4 GHz） |
-| 電池粗估 | 短測 ~1.14 %/h → 滿電約 3.5–4 天（長測待做，見 AGENTS §6.3） |
+| 電池粗估 | 短測與追加觀測結果不同 → 滿電約兩至三天的區間推算（完整長測待做，見 [`docs/power-and-progress.md`](docs/power-and-progress.md)） |
 
 ### 燒錄
 
@@ -162,4 +162,4 @@ void setup() {
 4. PSRAM：**octal 80 MHz**  
 5. 勿提交 `secrets.h`  
 
-Agent 約定與待辦：[`AGENTS.md`](AGENTS.md) §6–§7。
+Agent 約定與待辦：[`AGENTS.md`](AGENTS.md) 的快速地圖與 [`docs/power-and-progress.md`](docs/power-and-progress.md)。
