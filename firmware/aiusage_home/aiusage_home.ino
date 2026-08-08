@@ -483,35 +483,38 @@ static void drawBottomBar(const char* extraHint) {
 }
 
 static void drawSourceCell(int x, int y, const SourceUi& s, bool withReset) {
+  // Name + origin on one line: "CLAUDE oauth"
   u8g2.setFont(u8g2_font_helvB10_tf);
   u8g2.drawStr(x, y, s.name);
-
-  u8g2.setFont(u8g2_font_6x13_tf);
-  if (s.origin[0]) u8g2.drawStr(x, y + 14, s.origin);
+  if (s.origin[0]) {
+    int nw = u8g2.getStrWidth(s.name);
+    u8g2.setFont(u8g2_font_6x13_tf);
+    u8g2.drawStr(x + nw + 4, y, s.origin);
+  }
 
   if (!s.present || !s.ok || s.remainWeek < 0) {
     u8g2.setFont(u8g2_font_logisoso22_tn);
-    u8g2.drawStr(x, y + 42, "--");
+    u8g2.drawStr(x, y + 30, "--");
     u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.drawStr(x, y + 58, s.present ? "source fail" : "missing");
+    u8g2.drawStr(x, y + 46, s.present ? "source fail" : "missing");
     return;
   }
 
   char num[12];
   snprintf(num, sizeof(num), "%.0f", s.remainWeek);
   u8g2.setFont(u8g2_font_logisoso22_tn);
-  u8g2.drawStr(x, y + 42, num);
+  u8g2.drawStr(x, y + 30, num);
   int nw = u8g2.getStrWidth(num);
   u8g2.setFont(u8g2_font_helvB10_tf);
-  u8g2.drawStr(x + nw + 2, y + 40, "%");
+  u8g2.drawStr(x + nw + 2, y + 28, "%");
 
-  drawBar(x, y + 50, 172, 12, s.remainWeek / 100.0f);
+  drawBar(x, y + 38, 172, 12, s.remainWeek / 100.0f);
 
   if (withReset) {
     char rb[24];
     fmtResetLine(s.resetWeek, rb, sizeof(rb));
     u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.drawStr(x, y + 74, rb);
+    u8g2.drawStr(x, y + 62, rb);
   }
 }
 
@@ -555,9 +558,9 @@ static void renderHome() {
 
   u8g2.drawHLine(8, 168, W - 16);
 
-  drawSourceCell(12, 180, gSnap.src[2], false);
+  drawSourceCell(12, 180, gSnap.src[2], true);
   u8g2.drawVLine(200, 174, 76);
-  drawSourceCell(212, 180, gSnap.src[3], false);
+  drawSourceCell(212, 180, gSnap.src[3], true);
 
   drawBottomBar(nullptr);
   u8g2.sendBuffer();
@@ -598,6 +601,11 @@ static void renderDetail() {
 
     u8g2.setFont(u8g2_font_helvB10_tf);
     u8g2.drawStr(12, y0 + 12, s.name);
+    if (s.origin[0]) {
+      int nw = u8g2.getStrWidth(s.name);
+      u8g2.setFont(u8g2_font_6x13_tf);
+      u8g2.drawStr(12 + nw + 4, y0 + 12, s.origin);
+    }
 
     char week[12], five[12], rst[16];
     if (!s.present || !s.ok || s.remainWeek < 0) snprintf(week, sizeof(week), "--");
@@ -809,6 +817,11 @@ static void renderPace() {
 
     u8g2.setFont(u8g2_font_helvB10_tf);
     u8g2.drawStr(12, y0 + 12, s.name);
+    if (s.origin[0]) {
+      int nw = u8g2.getStrWidth(s.name);
+      u8g2.setFont(u8g2_font_6x13_tf);
+      u8g2.drawStr(12 + nw + 4, y0 + 12, s.origin);
+    }
     u8g2.setFont(u8g2_font_6x13_tf);
     u8g2.drawStr(12, y0 + 28, paceLabel(day[i]));
 
