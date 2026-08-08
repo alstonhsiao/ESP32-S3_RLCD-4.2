@@ -601,11 +601,6 @@ static void renderDetail() {
 
     u8g2.setFont(u8g2_font_helvB10_tf);
     u8g2.drawStr(12, y0 + 12, s.name);
-    if (s.origin[0]) {
-      int nw = u8g2.getStrWidth(s.name);
-      u8g2.setFont(u8g2_font_6x13_tf);
-      u8g2.drawStr(12 + nw + 4, y0 + 12, s.origin);
-    }
 
     char week[12], five[12], rst[16];
     if (!s.present || !s.ok || s.remainWeek < 0) snprintf(week, sizeof(week), "--");
@@ -817,11 +812,6 @@ static void renderPace() {
 
     u8g2.setFont(u8g2_font_helvB10_tf);
     u8g2.drawStr(12, y0 + 12, s.name);
-    if (s.origin[0]) {
-      int nw = u8g2.getStrWidth(s.name);
-      u8g2.setFont(u8g2_font_6x13_tf);
-      u8g2.drawStr(12 + nw + 4, y0 + 12, s.origin);
-    }
     u8g2.setFont(u8g2_font_6x13_tf);
     u8g2.drawStr(12, y0 + 28, paceLabel(day[i]));
 
