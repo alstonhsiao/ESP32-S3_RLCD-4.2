@@ -29,9 +29,9 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 
 ## aiusage_home 目前行為
 
-- 從 aiusage-web 的 `/data` 取得衍生 JSON，畫 P0 Home、P1 Detail、P2 Trend、P3 Pace。
+- 從 aiusage-web 的 `/data` 取得衍生 JSON，畫 P0 Home、P1 Detail、P2 Trend、P3 Pace，以及 P4–P7 四個來源分頁圖表。
 - 短按 BOOT（GPIO0）循環換頁；長按約 3 秒進入 WiFiManager AP `AIUsage-RLCD`。
-- 資料以較長間隔輪詢，畫面通常在分鐘變更時重畫，頁面也會自動輪替；實際常數以 `aiusage_home.ino` 為準。
+- 資料以較長間隔輪詢，畫面通常在分鐘變更時重畫，頁面也會自動輪替；目前 P0–P7 每 5 分鐘換頁，完整一輪約 40 分鐘，實際常數以 `aiusage_home.ino` 為準。
 - 拉資料時才開 Wi-Fi，完成後關閉 radio；這是目前 always-on 電池策略的一部分。
 - 沒有資料、部分來源失敗或離線時仍要顯示狀態，不得白屏。
 
@@ -39,7 +39,7 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 
 | 操作 | 行為 |
 | --- | --- |
-| 短按 BOOT | P0 → P1 → P2 → P3 循環 |
+| 短按 BOOT | P0 → P1 → P2 → P3 → P4 → P5 → P6 → P7 循環 |
 | 長按 BOOT 約 3 秒 | 顯示 AP 資訊，手機連 `AIUsage-RLCD`，開 `192.168.4.1` 配網 |
 | Wi-Fi | 只支援 2.4 GHz；WiFiManager 會記住上次配網 |
 | 寫死 Wi-Fi | 由 `secrets.h.example` 複製 `secrets.h`；檔案已 gitignore，勿提交 |
@@ -50,7 +50,7 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 1. 先讀本檔、`../AGENTS.md` 的高風險規則與 `../firmware/INDEX.md`。
 2. 插 USB 後執行 `arduino-cli board list`，確認實際 PORT。
 3. 若板上不是 aiusage 畫面，重新編譯並燒錄 `../firmware/aiusage_home`。
-4. 短按 BOOT 確認 P0 到 P3 都可切換，再決定 UX、感測或穩定度工作。
+4. 短按 BOOT 確認 P0 到 P7 都可切換，再決定 UX、感測或穩定度工作。
 
 插拔 Type-C 或 18650 時勿以螢幕受力；不要用超壓供電或暴力拆裝作為復原手段。
 

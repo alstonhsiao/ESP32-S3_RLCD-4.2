@@ -8,6 +8,7 @@
 | 檔案 | 說明 |
 | --- | --- |
 | [aiusage-wireframe.html](./aiusage-wireframe.html) | AI 週剩餘用量儀表（對齊 aiusage-web） |
+| [../web/aiusage-analysis.html](../web/aiusage-analysis.html) | 電腦端四源分析圖表；P4–P7 RLCD 頁面的資料、reset/due 與斜率原型 |
 
 ## 如何預覽
 
@@ -33,6 +34,7 @@ open ui/aiusage-wireframe.html
 | P0 Home | 時鐘 + Claude/Codex/Grok/Ollama 週剩餘 % + bar |
 | P1 Detail | 表格式：week / 5h / reset；低剩餘反白警示 |
 | P2 Trend | 多源剩餘折線（線型區分）+ 100/7 輔助虛線 |
+| P4–P7 Source Trend | Claude、Codex、Grok、Ollama 各自一頁；最近 10 天剩餘曲線、reset/due 標記與提前 reset 截斷的理想斜率（電腦端原型見 `../web/aiusage-analysis.html`） |
 | States | no data / partial / offline |
 
 BOOT 短按翻頁（之後韌體實作）。

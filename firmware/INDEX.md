@@ -11,7 +11,7 @@
 
 | 項目 | 一句話說明 | 觸發條件 | 關鍵輸入／輸出 | ⚠️ 注意事項 |
 | --- | --- | --- | --- | --- |
-| `aiusage_home/` | 目前主線是四頁 AI 用量儀表。 | 要改 UI、JSON、Wi-Fi、BOOT 或刷新節奏。 | 輸入 aiusage-web 衍生 JSON；輸出 ST7305 1bpp 畫面與 Serial 狀態。 | 先看根目錄 `AGENTS.md` 的腳位、1bpp 與功耗規則；不要讀或提交本機 `secrets.h`。 |
+| `aiusage_home/` | 目前主線是 P0–P7 AI 用量儀表。 | 要改 UI、JSON、Wi-Fi、BOOT 或刷新節奏。 | 輸入 aiusage-web 衍生 JSON；輸出 ST7305 1bpp 畫面與 Serial 狀態。 | 先看根目錄 `AGENTS.md` 的腳位、1bpp 與功耗規則；不要讀或提交本機 `secrets.h`。 |
 | `hello_rlcd/` | 最小顯示驗證，適合排除主程式以外的硬體問題。 | 螢幕空白、方向錯、SPI 初始化或新板首次燒錄。 | 輸入固定測試圖形；輸出 Hello 畫面與 heartbeat。 | RLCD 需要環境光；測試成功不代表 aiusage 網路路徑已成功。 |
 
 ## 共用邊界

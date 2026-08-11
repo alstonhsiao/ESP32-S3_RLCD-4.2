@@ -7,8 +7,9 @@
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
  *   P0 Home   — clock + 2x2 week remain
  *   P1 Detail — week / 5h / reset table
- *   P2 Trend  — last N remain% polylines (4 series, thick styles)
+ *   P2 Trend  — last 10d remain% polylines (4 series, thick styles)
  *   P3 Pace   — 24h budget table (remain/days, week end, 5h end)
+ *   P4-P7    — one 10d remain% chart per source, reset-aware ideal slope
  * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes
  * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD)
  *
@@ -37,8 +38,12 @@
 
 #define W 400
 #define H 300
-#define PAGE_COUNT 4
-#define TREND_N 40
+#define PAGE_COUNT 8
+#define CHART_PAGE_BASE 4
+#define TREND_N 128
+#define TREND_WINDOW_SEC (10L * 86400L)
+#define MIN_SLOPE_WINDOW_SEC (6L * 3600L)
+#define SLOPE_TOLERANCE 0.10f
 
 static const char* DATA_URL = "https://aiusage-web.zeabur.app/data";
 static const uint32_t POLL_MS = 900000;      // fetch cloud data every 15 minutes
@@ -76,6 +81,8 @@ struct UsageSnapshot {
   };
   // trend: remain% 0..100, or -1 missing; chronological oldest→newest
   int8_t trend[4][TREND_N];
+  long trendTs[TREND_N];
+  long trendResetWeek[4][TREND_N];
   int trendN = 0;
   char trendStartLbl[8] = "";
   char trendEndLbl[8] = "";
@@ -98,6 +105,17 @@ static void render();  // forward
 static bool haveLocalTime(struct tm* t);
 static bool ensureWifi(uint32_t timeoutMs = WIFI_CONNECT_MS);
 static void radioOff();
+
+struct TrendResetEvent {
+  long time;
+  long due;
+  int beforeRemain;
+  int afterRemain;
+  bool confirmed;
+};
+
+static TrendResetEvent gTrendEvents[TREND_N];
+static int gTrendEventN = 0;
 
 static void noteDrawnMinute() {
   struct tm t;
@@ -310,14 +328,29 @@ static const char* linkLabel(LinkState s) {
   }
 }
 
+static bool sourceJsonOk(JsonObject s);
+
 static void fillSourceFromJson(SourceUi& dst, JsonObject s) {
   dst.present = true;
-  dst.ok = s["ok"] | false;
+  dst.ok = sourceJsonOk(s);
   shortOrigin(s["origin"] | "", dst.origin, sizeof(dst.origin));
   dst.remainWeek = remainFromUsed(s["used_weekly_pct"]);
   dst.remain5h = remainFromUsed(s["used_5h_pct"]);
   dst.resetWeek = s["resets_weekly_at"].isNull() ? 0 : s["resets_weekly_at"].as<long>();
   dst.reset5h = s["resets_5h_at"].isNull() ? 0 : s["resets_5h_at"].as<long>();
+}
+
+// Some /data snapshots omit `ok` when the numeric fields themselves are valid.
+// Treat an explicit error or false `ok` as failure, otherwise accept numeric data.
+static bool sourceJsonOk(JsonObject s) {
+  if (!s["error"].isNull()) return false;
+  if (!s["ok"].isNull()) return s["ok"] | false;
+  return !s["used_weekly_pct"].isNull() || !s["used_5h_pct"].isNull();
+}
+
+static long pointEpoch(JsonObject pt) {
+  long ep = pt["ts_epoch"] | 0L;
+  return ep > 100000 ? ep : 0L;
 }
 
 // ---- fetch ----
@@ -342,8 +375,12 @@ static bool parsePayload(const String& payload) {
     gSnap.src[i].resetWeek = 0;
     gSnap.src[i].reset5h = 0;
     gSnap.src[i].origin[0] = 0;
-    for (int j = 0; j < TREND_N; j++) gSnap.trend[i][j] = -1;
+    for (int j = 0; j < TREND_N; j++) {
+      gSnap.trend[i][j] = -1;
+      gSnap.trendResetWeek[i][j] = 0;
+    }
   }
+  for (int j = 0; j < TREND_N; j++) gSnap.trendTs[j] = 0;
   gSnap.trendN = 0;
   gSnap.trendStartLbl[0] = 0;
   gSnap.trendEndLbl[0] = 0;
@@ -368,23 +405,31 @@ static bool parsePayload(const String& payload) {
     fillSourceFromJson(gSnap.src[i], s);
   }
 
-  // trend window: last TREND_N points
-  int start = nPts > TREND_N ? nPts - TREND_N : 0;
+  // trend window: recent 10 days, capped to TREND_N points for RLCD memory.
+  int start = 0;
+  long lastEpoch = pointEpoch(points[nPts - 1].as<JsonObject>());
+  if (lastEpoch > 100000) {
+    long cutoff = lastEpoch - TREND_WINDOW_SEC;
+    while (start < nPts && pointEpoch(points[start].as<JsonObject>()) < cutoff) start++;
+  }
+  if (nPts - start > TREND_N) start = nPts - TREND_N;
   gSnap.trendN = nPts - start;
   for (int ti = 0; ti < gSnap.trendN; ti++) {
     JsonObject pt = points[start + ti].as<JsonObject>();
+    gSnap.trendTs[ti] = pointEpoch(pt);
     if (ti == 0) labelFromPoint(pt, gSnap.trendStartLbl, sizeof(gSnap.trendStartLbl));
     if (ti == gSnap.trendN - 1) labelFromPoint(pt, gSnap.trendEndLbl, sizeof(gSnap.trendEndLbl));
     JsonObject srcs = pt["sources"].as<JsonObject>();
     for (int i = 0; i < 4; i++) {
       if (srcs.isNull()) { gSnap.trend[i][ti] = -1; continue; }
       JsonObject s = srcs[keys[i]].as<JsonObject>();
-      if (s.isNull() || !(s["ok"] | false) || s["used_weekly_pct"].isNull()) {
+      if (s.isNull() || !sourceJsonOk(s) || s["used_weekly_pct"].isNull()) {
         gSnap.trend[i][ti] = -1;
         continue;
       }
       float rem = remainFromUsed(s["used_weekly_pct"]);
       gSnap.trend[i][ti] = (int8_t)(rem + 0.5f);
+      gSnap.trendResetWeek[i][ti] = s["resets_weekly_at"].isNull() ? 0 : s["resets_weekly_at"].as<long>();
     }
   }
 
@@ -764,6 +809,294 @@ static void renderTrend() {
   u8g2.sendBuffer();
 }
 
+// ---- per-source 10d chart pages (P4-P7) ----
+static int firstTrendValid(int srcIdx) {
+  for (int i = 0; i < gSnap.trendN; i++) {
+    if (gSnap.trend[srcIdx][i] >= 0 && gSnap.trendTs[i] > 100000) return i;
+  }
+  return -1;
+}
+
+static int lastTrendValid(int srcIdx) {
+  for (int i = gSnap.trendN - 1; i >= 0; i--) {
+    if (gSnap.trend[srcIdx][i] >= 0 && gSnap.trendTs[i] > 100000) return i;
+  }
+  return -1;
+}
+
+static long clampEpoch(long value, long lo, long hi) {
+  if (value < lo) return lo;
+  if (value > hi) return hi;
+  return value;
+}
+
+static int trendChartX(long ts, int left, int cw, long start, long end) {
+  long span = end - start;
+  if (span <= 0) return left;
+  long long offset = (long long)(ts - start) * (cw - 1);
+  return left + (int)(offset / span);
+}
+
+static int trendChartY(int remain, int top, int ch) {
+  if (remain < 0) remain = 0;
+  if (remain > 100) remain = 100;
+  return top + ch - 1 - (int)((long)remain * (ch - 1) / 100L);
+}
+
+static void fmtChartMd(long epoch, char* out, size_t n) {
+  if (epoch <= 100000) {
+    snprintf(out, n, "--");
+    return;
+  }
+  time_t t = (time_t)epoch;
+  struct tm tm;
+  localtime_r(&t, &tm);
+  snprintf(out, n, "%02d/%02d", tm.tm_mon + 1, tm.tm_mday);
+}
+
+static int collectTrendResetEvents(int srcIdx) {
+  gTrendEventN = 0;
+  int previous = -1;
+  for (int i = 0; i < gSnap.trendN; i++) {
+    int currentRemain = gSnap.trend[srcIdx][i];
+    if (currentRemain < 0 || gSnap.trendTs[i] <= 100000) continue;
+
+    if (previous >= 0 && gTrendEventN < TREND_N) {
+      int previousRemain = gSnap.trend[srcIdx][previous];
+      long previousTs = gSnap.trendTs[previous];
+      long currentTs = gSnap.trendTs[i];
+      long previousDue = gSnap.trendResetWeek[srcIdx][previous];
+      long currentDue = gSnap.trendResetWeek[srcIdx][i];
+      int jump = currentRemain - previousRemain;
+      bool scheduleRolled = previousDue > 100000 && currentDue > 100000
+                            && currentDue - previousDue > 45L * 60L;
+      bool expectedInWindow = previousDue > 100000
+                              && previousDue >= previousTs - 20L * 60L
+                              && previousDue <= currentTs + 20L * 60L;
+
+      if (jump >= 5 || (scheduleRolled && expectedInWindow)) {
+        TrendResetEvent& event = gTrendEvents[gTrendEventN++];
+        event.time = expectedInWindow ? clampEpoch(previousDue, previousTs, currentTs) : currentTs;
+        event.due = currentDue;
+        event.beforeRemain = previousRemain;
+        event.afterRemain = currentRemain;
+        event.confirmed = expectedInWindow || (scheduleRolled && jump >= 20);
+      }
+    }
+    previous = i;
+  }
+
+  // Collapse duplicate markers caused by a simple/history-only pair around one reset.
+  int write = 0;
+  for (int i = 0; i < gTrendEventN; i++) {
+    if (write > 0 && gTrendEvents[i].time - gTrendEvents[write - 1].time < 10L * 60L) {
+      if (gTrendEvents[i].confirmed) gTrendEvents[write - 1] = gTrendEvents[i];
+      continue;
+    }
+    if (write != i) gTrendEvents[write] = gTrendEvents[i];
+    write++;
+  }
+  gTrendEventN = write;
+  return gTrendEventN;
+}
+
+static float trendUsedSlope(int srcIdx, int firstIdx, int lastIdx, long cycleStart) {
+  int count = 0;
+  float sumX = 0.0f;
+  float sumY = 0.0f;
+  for (int i = firstIdx; i <= lastIdx; i++) {
+    if (gSnap.trend[srcIdx][i] < 0 || gSnap.trendTs[i] < cycleStart) continue;
+    float x = (float)(gSnap.trendTs[i] - cycleStart) / 86400.0f;
+    float y = 100.0f - (float)gSnap.trend[srcIdx][i];
+    sumX += x;
+    sumY += y;
+    count++;
+  }
+  if (count < 3) return -1.0f;
+
+  float meanX = sumX / count;
+  float meanY = sumY / count;
+  float numerator = 0.0f;
+  float denominator = 0.0f;
+  for (int i = firstIdx; i <= lastIdx; i++) {
+    if (gSnap.trend[srcIdx][i] < 0 || gSnap.trendTs[i] < cycleStart) continue;
+    float x = (float)(gSnap.trendTs[i] - cycleStart) / 86400.0f;
+    float y = 100.0f - (float)gSnap.trend[srcIdx][i];
+    numerator += (x - meanX) * (y - meanY);
+    denominator += (x - meanX) * (x - meanX);
+  }
+  return denominator > 0.0f ? numerator / denominator : -1.0f;
+}
+
+static void drawTrendIdeal(int srcIdx, int left, int top, int cw, int ch,
+                           long domainStart, long domainEnd) {
+  int first = firstTrendValid(srcIdx);
+  if (first < 0) return;
+
+  if (gTrendEventN <= 0) {
+    long due = gSnap.src[srcIdx].resetWeek;
+    if (due > gSnap.trendTs[first]) {
+      long t0 = max(domainStart, gSnap.trendTs[first]);
+      long t1 = min(domainEnd, due);
+      long span = due - gSnap.trendTs[first];
+      int startUsed = 100 - gSnap.trend[srcIdx][first];
+      int remain0 = 100 - startUsed;
+      int remain1 = span > 0 ? 100 - (int)((long long)100 * (t1 - gSnap.trendTs[first]) / span) : 0;
+      if (t1 > t0) plotSegment(trendChartX(t0, left, cw, domainStart, domainEnd),
+                               trendChartY(remain0, top, ch),
+                               trendChartX(t1, left, cw, domainStart, domainEnd),
+                               trendChartY(remain1, top, ch), 1);
+    }
+    return;
+  }
+
+  for (int i = 0; i < gTrendEventN; i++) {
+    const TrendResetEvent& event = gTrendEvents[i];
+    long due = event.due > event.time ? event.due : gSnap.src[srcIdx].resetWeek;
+    long nextEvent = (i + 1 < gTrendEventN) ? gTrendEvents[i + 1].time : due;
+    long segmentEnd = due > 100000 ? min(due, nextEvent) : nextEvent;
+    if (segmentEnd <= event.time) continue;
+
+    long t0 = max(domainStart, event.time);
+    long t1 = min(domainEnd, segmentEnd);
+    if (t1 <= t0) continue;
+
+    int remain0 = due > event.time
+                    ? 100 - (int)((long long)100 * (t0 - event.time) / (due - event.time))
+                    : 100;
+    int remain1 = due > event.time
+                    ? 100 - (int)((long long)100 * (t1 - event.time) / (due - event.time))
+                    : 0;
+    if (remain0 < 0) remain0 = 0;
+    if (remain0 > 100) remain0 = 100;
+    if (remain1 < 0) remain1 = 0;
+    if (remain1 > 100) remain1 = 100;
+    plotSegment(trendChartX(t0, left, cw, domainStart, domainEnd),
+                trendChartY(remain0, top, ch),
+                trendChartX(t1, left, cw, domainStart, domainEnd),
+                trendChartY(remain1, top, ch), 1);
+  }
+}
+
+static void renderSourceTrend(int srcIdx) {
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
+  gBat = readBatteryPct();
+
+  int first = firstTrendValid(srcIdx);
+  int last = lastTrendValid(srcIdx);
+  if (first < 0 || last < 0) {
+    drawStatusScreen(gSnap.src[srcIdx].name, "NO WEEK DATA", "poll again");
+    return;
+  }
+
+  collectTrendResetEvents(srcIdx);
+  long dataStart = gSnap.trendTs[first];
+  long dataEnd = gSnap.trendTs[last];
+  long nextDue = gSnap.src[srcIdx].resetWeek;
+  long domainEnd = nextDue > dataEnd ? nextDue : dataEnd;
+  if (domainEnd <= dataStart) domainEnd = dataStart + 86400L;
+
+  int latestEvent = -1;
+  for (int i = 0; i < gTrendEventN; i++) {
+    if (gTrendEvents[i].time <= dataEnd) latestEvent = i;
+  }
+
+  long cycleStart = latestEvent >= 0 ? gTrendEvents[latestEvent].time : dataStart;
+  long cycleDue = latestEvent >= 0 && gTrendEvents[latestEvent].due > cycleStart
+                    ? gTrendEvents[latestEvent].due : nextDue;
+  int cycleFirst = first;
+  while (cycleFirst <= last && gSnap.trendTs[cycleFirst] < cycleStart) cycleFirst++;
+
+  float target = -1.0f;
+  if (cycleDue > cycleStart) {
+    int startUsed = latestEvent >= 0 ? 0 : 100 - gSnap.trend[srcIdx][first];
+    float days = (float)(cycleDue - cycleStart) / 86400.0f;
+    if (days > 0.0f) target = (100.0f - startUsed) / days;
+  }
+
+  float actual = -1.0f;
+  if (cycleFirst <= last && dataEnd - cycleStart >= MIN_SLOPE_WINDOW_SEC)
+    actual = trendUsedSlope(srcIdx, cycleFirst, last, cycleStart);
+
+  const char* pace = "--";
+  if (actual >= 0.0f && target > 0.0f) {
+    if (actual > target * (1.0f + SLOPE_TOLERANCE)) pace = "FAST";
+    else if (actual < target * (1.0f - SLOPE_TOLERANCE)) pace = "SLOW";
+    else pace = "OK";
+  } else if (latestEvent >= 0 && dataEnd - cycleStart < MIN_SLOPE_WINDOW_SEC) {
+    pace = "RESET";
+  }
+
+  char title[24], meta[32], slopeLine[40], actualStr[8], targetStr[8];
+  snprintf(title, sizeof(title), "%s REMAIN", gSnap.src[srcIdx].name);
+  snprintf(meta, sizeof(meta), "P%d  LAST 10D", CHART_PAGE_BASE + srcIdx);
+  if (actual >= 0.0f) snprintf(actualStr, sizeof(actualStr), "%.1f", actual);
+  else snprintf(actualStr, sizeof(actualStr), "--");
+  if (target >= 0.0f) snprintf(targetStr, sizeof(targetStr), "%.1f", target);
+  else snprintf(targetStr, sizeof(targetStr), "--");
+  snprintf(slopeLine, sizeof(slopeLine), "R %.0f%%  S %s  T %s/d",
+           gSnap.trend[srcIdx][last] * 1.0f, actualStr, targetStr);
+
+  u8g2.setFont(u8g2_font_helvB12_tf);
+  u8g2.drawStr(10, 18, title);
+  u8g2.setFont(u8g2_font_6x13_tf);
+  strRight(W - 12, 16, meta);
+  u8g2.drawStr(10, 38, slopeLine);
+  strRight(W - 12, 38, pace);
+  u8g2.drawHLine(8, 44, W - 16);
+
+  const int left = 40, top = 50, cw = 346, ch = 188;
+  u8g2.drawFrame(left, top, cw, ch);
+  u8g2.setFont(u8g2_font_6x13_tf);
+  u8g2.drawStr(4, top + 10, "100");
+  u8g2.drawStr(10, top + ch / 2 + 4, "50");
+  u8g2.drawStr(16, top + ch - 2, "0");
+  for (int i = 1; i <= 3; i++) {
+    int y = top + ch - 1 - (int)((long)(25 * i) * (ch - 1) / 100L);
+    for (int x = left + 2; x < left + cw - 2; x += 6) u8g2.drawPixel(x, y);
+  }
+
+  drawTrendIdeal(srcIdx, left, top, cw, ch, dataStart, domainEnd);
+
+  for (int i = 0; i < gTrendEventN; i++) {
+    const TrendResetEvent& event = gTrendEvents[i];
+    if (event.time < dataStart || event.time > domainEnd) continue;
+    int x = trendChartX(event.time, left, cw, dataStart, domainEnd);
+    for (int y = top + 2; y < top + ch - 2; y += 6) u8g2.drawVLine(x, y, 3);
+    u8g2.drawCircle(x, trendChartY(event.afterRemain, top, ch), 2);
+    u8g2.drawStr(x + 3, top + 12, event.confirmed ? "R" : "?");
+  }
+
+  if (nextDue > dataEnd && nextDue <= domainEnd) {
+    int x = trendChartX(nextDue, left, cw, dataStart, domainEnd);
+    for (int y = top + 2; y < top + ch - 2; y += 6) u8g2.drawVLine(x, y, 3);
+    u8g2.drawStr(x - 18, top + 26, "DUE");
+  }
+
+  int previous = -1;
+  for (int i = first; i <= last; i++) {
+    if (gSnap.trend[srcIdx][i] < 0 || gSnap.trendTs[i] <= 100000) continue;
+    int x = trendChartX(gSnap.trendTs[i], left, cw, dataStart, domainEnd);
+    int y = trendChartY(gSnap.trend[srcIdx][i], top, ch);
+    if (previous >= 0) {
+      int px = trendChartX(gSnap.trendTs[previous], left, cw, dataStart, domainEnd);
+      int py = trendChartY(gSnap.trend[srcIdx][previous], top, ch);
+      u8g2.drawLine(px, py, x, y);
+    }
+    u8g2.drawPixel(x, y);
+    previous = i;
+  }
+
+  char startLbl[8], endLbl[8];
+  fmtChartMd(dataStart, startLbl, sizeof(startLbl));
+  fmtChartMd(domainEnd, endLbl, sizeof(endLbl));
+  u8g2.drawStr(left, top + ch + 14, startLbl);
+  strRight(left + cw, top + ch + 14, endLbl);
+  drawBottomBar("R=reset D=due");
+  u8g2.sendBuffer();
+}
+
 // P3 — table: daily budget = week_remain% / days_until_weekly_reset
 static void renderPace() {
   u8g2.clearBuffer();
@@ -877,7 +1210,8 @@ static void render() {
   if (gPage == 0) renderHome();
   else if (gPage == 1) renderDetail();
   else if (gPage == 2) renderTrend();
-  else renderPace();
+  else if (gPage == 3) renderPace();
+  else renderSourceTrend(gPage - CHART_PAGE_BASE);
 }
 
 // ---- WiFi (connect only for poll / portal; radio OFF between) ----
@@ -1027,7 +1361,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("aiusage_home: boot (P0-P3 / 5m page / 15m poll / radio-off)");
+  Serial.println("aiusage_home: boot (P0-P7 / 5m page / 15m poll / radio-off)");
 
   pinMode(BTN_BOOT, INPUT_PULLUP);
   gLastBtn = digitalRead(BTN_BOOT);

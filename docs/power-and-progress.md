@@ -26,7 +26,7 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 | 領域 | 現況 |
 | --- | --- |
 | 基建 | SPEC、Arduino + U8g2、Hello RLCD 與 aiusage 多頁已完成 |
-| aiusage | P0 Home、P1 Detail、P2 Trend、P3 Daily Pace 已上板可用 |
+| aiusage | P0–P3 基礎頁面已完成；P4–P7 四源最近 10 天圖表已加入，待實機確認 |
 | UX | P1 間距、P2 多線可讀性、軟體反顯仍待打磨 |
 | 穩定度 | HTTPS／較大 JSON、離線 stale、重試與精簡 API 待驗證 |
 | 感測與互動 | SHTC3、KEY 第二操作、天氣或本機 proxy 待規劃 |
@@ -41,6 +41,7 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 | 2026-08-05 | P3 Daily Pace 採表格式方案，wireframe 補上 P3／P3b |
 | 2026-08-06 | 完成第一段電池短測，長測列為待辦；整理 handoff 內容回本 repo |
 | 2026-08-07 | 完成追加電池觀測；仍以完整放電週期為準 |
+| 2026-08-11 | Web 四源圖表移植至 RLCD P4–P7：各頁顯示最近 10 天剩餘曲線、reset/due 與 reset-aware 理想斜率；已通過本機編譯，待燒錄驗證 |
 
 ## 刻意未做
 

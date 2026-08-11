@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Usage Pace Analysis</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --ink: #172033;
+      --muted: #667085;
+      --border: #dfe3ea;
+      --grid: #e9edf2;
+      --accent: #1f6feb;
+      --danger: #c83b4b;
+      --warning: #b56a00;
+      --ok: #18794e;
+      --claude: #c4512d;
+      --codex: #2672c8;
+      --grok: #7654b7;
+      --ollama: #16866a;
+      --ideal: #8a94a6;
+      --shadow: 0 10px 30px rgba(24, 35, 54, 0.07);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: var(--bg); color: var(--ink); }
+    button, input, select { font: inherit; }
+    button, label.file-button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, label.file-button:focus-within {
+      outline: 3px solid rgba(31, 111, 235, 0.25); outline-offset: 2px;
+    }
+    .shell { max-width: 1420px; margin: 0 auto; padding: 28px 24px 44px; }
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+    h1 { margin: 0; font-size: clamp(1.7rem, 3vw, 2.45rem); letter-spacing: -0.035em; }
+    .subtitle { margin: 8px 0 0; color: var(--muted); max-width: 760px; }
+    .source-status { color: var(--muted); text-align: right; font-size: 0.86rem; line-height: 1.55; }
+
+    .toolbar {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px;
+      padding: 14px 16px; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; box-shadow: var(--shadow); margin-bottom: 14px;
+    }
+    .toolbar-group { display: flex; align-items: center; gap: 8px; }
+    .toolbar label { color: var(--muted); font-size: 0.86rem; }
+    select, input[type="number"] {
+      min-height: 34px; padding: 5px 9px; color: var(--ink); background: var(--panel);
+      border: 1px solid var(--border); border-radius: 7px;
+    }
+    input[type="number"] { width: 72px; }
+    input[type="checkbox"] { accent-color: var(--accent); }
+    .primary-button, .file-button {
+      min-height: 34px; display: inline-flex; align-items: center; justify-content: center;
+      gap: 7px; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border);
+      background: var(--panel-soft); color: var(--ink); text-decoration: none;
+    }
+    .primary-button { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .notice {
+      min-height: 42px; display: flex; align-items: center; padding: 10px 14px;
+      margin-bottom: 20px; color: var(--muted); background: var(--panel-soft);
+      border: 1px solid var(--border); border-radius: 9px; font-size: 0.9rem;
+    }
+    .notice[data-tone="error"] { color: var(--danger); border-color: rgba(200, 59, 75, 0.35); }
+    .notice[data-tone="success"] { color: var(--ok); border-color: rgba(24, 121, 78, 0.35); }
+
+    .chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .chart-panel {
+      min-width: 0; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; box-shadow: var(--shadow); overflow: hidden;
+    }
+    .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 16px 18px 8px; }
+    .panel-title { display: flex; align-items: center; gap: 9px; }
+    .source-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--source-color); flex: 0 0 auto; }
+    .source-name { margin: 0; font-size: 1.12rem; letter-spacing: 0.01em; }
+    .source-note { margin: 5px 0 0; color: var(--muted); font-size: 0.78rem; }
+    .panel-status { text-align: right; font-size: 0.8rem; }
+    .status-label { display: inline-block; font-weight: 600; letter-spacing: 0.05em; }
+    .status-label.ok { color: var(--ok); }
+    .status-label.fast { color: var(--danger); }
+    .status-label.slow { color: var(--warning); }
+    .status-label.na { color: var(--muted); }
+    .panel-stats { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px 12px; margin-top: 5px; color: var(--muted); }
+    .panel-stats span { white-space: nowrap; }
+    .plot-wrap { position: relative; padding: 0 10px; }
+    svg.chart { display: block; width: 100%; height: 310px; overflow: visible; }
+    .empty-chart { position: absolute; inset: 0 18px; display: grid; place-items: center; color: var(--muted); pointer-events: none; }
+    .panel-foot { display: flex; justify-content: space-between; gap: 12px; padding: 8px 18px 14px; color: var(--muted); font-size: 0.78rem; border-top: 1px solid var(--grid); }
+    .panel-foot span:last-child { text-align: right; }
+
+    .events { margin-top: 20px; padding: 16px 18px 18px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+    .events h2 { margin: 0 0 5px; font-size: 1.05rem; }
+    .events p { margin: 0 0 12px; color: var(--muted); font-size: 0.86rem; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    th, td { padding: 9px 8px; text-align: left; border-top: 1px solid var(--grid); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 500; }
+    .confidence { font-weight: 600; }
+    .confidence.confirmed { color: var(--ok); }
+    .confidence.suspected { color: var(--warning); }
+    .confidence.scheduled { color: var(--accent); }
+    .no-events { color: var(--muted); }
+
+    .axis-text, .chart-label { fill: var(--muted); font-size: 11px; }
+    .axis-title { fill: var(--muted); font-size: 11px; }
+    .grid-line { stroke: var(--grid); stroke-width: 1; }
+    .axis-line { stroke: var(--border); stroke-width: 1; }
+    .actual-line { fill: none; stroke: var(--source-color); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+    .ideal-line { fill: none; stroke: var(--ideal); stroke-width: 1.5; stroke-dasharray: 5 5; }
+    .event-line { stroke: var(--source-color); stroke-width: 1.4; stroke-dasharray: 3 4; opacity: 0.8; }
+    .event-line.suspected { stroke: var(--warning); }
+    .event-dot { fill: var(--panel); stroke: var(--source-color); stroke-width: 2; }
+    .event-dot.suspected { stroke: var(--warning); }
+    .next-reset-line { stroke: var(--accent); stroke-width: 1.3; stroke-dasharray: 2 4; opacity: 0.8; }
+    .future-zone { fill: rgba(31, 111, 235, 0.045); }
+    .hit-area { fill: transparent; cursor: crosshair; }
+    .tooltip {
+      position: absolute; z-index: 2; min-width: 150px; padding: 8px 10px; pointer-events: none;
+      color: #fff; background: rgba(23, 32, 51, 0.94); border-radius: 7px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); font-size: 0.76rem; line-height: 1.5;
+      transform: translate(10px, -8px);
+    }
+    .tooltip[hidden] { display: none; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 0 18px 14px; color: var(--muted); font-size: 0.78rem; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-line { width: 22px; height: 0; border-top: 2px solid currentColor; }
+    .legend-line.ideal { border-top-style: dashed; color: var(--ideal); }
+    .legend-line.reset { border-top-style: dashed; color: var(--accent); border-top-width: 1px; }
+
+    @media (max-width: 860px) {
+      .shell { padding: 22px 14px 32px; }
+      header { align-items: flex-start; flex-direction: column; gap: 10px; }
+      .source-status { text-align: left; }
+      .chart-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .toolbar-group { justify-content: space-between; }
+      .toolbar-group > select { flex: 1; }
+      svg.chart { height: 285px; }
+      .panel-head, .panel-foot, .legend { padding-inline: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell" id="app">
+    <header>
+      <div>
+        <h1>AI Usage Pace Analysis</h1>
+        <p class="subtitle">四個來源分開檢視消耗斜率、週期 reset 與資料可信度。</p>
+      </div>
+      <div class="source-status" id="sourceStatus">尚未載入資料</div>
+    </header>
+
+    <section class="toolbar" aria-label="圖表控制">
+      <button class="primary-button" type="button" id="loadOnline">載入線上資料</button>
+      <label class="file-button">匯入 JSON
+        <input type="file" id="fileInput" accept="application/json,.json">
+      </label>
+      <div class="toolbar-group">
+        <label for="metricSelect">額度</label>
+        <select id="metricSelect"><option value="weekly">Weekly</option><option value="5h">5h rolling window</option></select>
+      </div>
+      <div class="toolbar-group"><label>時間範圍</label><strong>最近 10 天</strong></div>
+      <div class="toolbar-group">
+        <label for="toleranceInput">斜率容許 ±</label>
+        <input id="toleranceInput" type="number" min="0" max="100" step="1" value="10" aria-label="斜率容許百分比"><span>%</span>
+      </div>
+      <label class="toolbar-group"><input id="idealToggle" type="checkbox" checked>顯示理想斜率</label>
+    </section>
+
+    <div class="notice" id="notice" role="status">可按「載入線上資料」，或匯入 `/data` 的 JSON 快照。</div>
+
+    <section class="legend" aria-label="圖表圖例">
+      <span><i class="legend-line"></i>實際剩餘額度</span><span><i class="legend-line ideal"></i>理想剩餘下降斜率</span><span><i class="legend-line reset"></i>reset／預定 reset</span>
+    </section>
+    <section class="chart-grid" id="chartGrid" aria-label="四個來源圖表"></section>
+
+    <section class="events" aria-labelledby="eventsTitle">
+      <h2 id="eventsTitle">Reset 事件紀錄</h2>
+      <p>事件時間以相鄰快照的時間範圍推定；「疑似」代表數值跳變，但缺少足夠的 reset 證據。</p>
+      <div class="table-wrap"><table><thead><tr><th>來源</th><th>額度</th><th>推定時間</th><th>資料範圍</th><th>剩餘變化</th><th>判定</th><th>理由</th></tr></thead><tbody id="eventsBody"><tr><td colspan="7" class="no-events">尚未載入資料</td></tr></tbody></table></div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+      const DATA_URL = "https://aiusage-web.zeabur.app/data";
+      const SOURCES = [
+        { key: "claude", name: "Claude", color: "var(--claude)" },
+        { key: "codex", name: "Codex", color: "var(--codex)" },
+        { key: "grok", name: "Grok", color: "var(--grok)" },
+        { key: "ollama", name: "Ollama", color: "var(--ollama)" }
+      ];
+      const DAY = 86400000, HOUR = 3600000, MINUTE = 60000, WINDOW_DAYS = 10, MIN_SLOPE_WINDOW = 6 * HOUR;
+      const state = { raw: null, points: [], metric: "weekly", tolerance: 10, showIdeal: true, sourceLabel: "尚未載入資料" };
+      const $ = selector => document.querySelector(selector);
+      const chartGrid = $("#chartGrid"), notice = $("#notice"), eventsBody = $("#eventsBody"), sourceStatus = $("#sourceStatus");
+
+      function setNotice(message, tone = "") { notice.textContent = message; notice.dataset.tone = tone; }
+      function finiteNumber(value) { const number = Number(value); return Number.isFinite(number) ? number : null; }
+      function epochValue(value) {
+        const number = finiteNumber(value);
+        if (number !== null && number > 1000000000) return number * 1000;
+        const parsed = Date.parse(value || "");
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      function formatDate(time, withSeconds = false) {
+        if (!Number.isFinite(time)) return "--";
+        return new Intl.DateTimeFormat("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", ...(withSeconds ? { second: "2-digit" } : {}) }).format(new Date(time));
+      }
+      function formatDateLong(time) {
+        if (!Number.isFinite(time)) return "--";
+        return new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(time));
+      }
+      function formatDuration(ms) {
+        if (!Number.isFinite(ms)) return "--";
+        const sign = ms < 0 ? "-" : ""; let minutes = Math.round(Math.abs(ms) / MINUTE);
+        const days = Math.floor(minutes / 1440); minutes -= days * 1440; const hours = Math.floor(minutes / 60); minutes %= 60;
+        if (days) return `${sign}${days}d ${hours}h`; if (hours) return `${sign}${hours}h ${minutes}m`; return `${sign}${minutes}m`;
+      }
+      function formatPct(value) { return Number.isFinite(value) ? `${value.toFixed(value % 1 ? 1 : 0)}%` : "--"; }
+      function remainingValue(used) { return Number.isFinite(used) ? 100 - used : null; }
+      function metricFields(metric) { return metric === "5h" ? { used: "used_5h_pct", reset: "resets_5h_at", label: "5h" } : { used: "used_weekly_pct", reset: "resets_weekly_at", label: "Weekly" }; }
+      function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+
+      function normalizePayload(raw) {
+        if (!raw || !Array.isArray(raw.points)) throw new Error("JSON 缺少 points 陣列");
+        const points = raw.points.map((point, index) => ({ index, time: epochValue(point.ts_epoch) ?? epochValue(point.ts), mode: point.mode || "unknown", sources: point.sources || {} })).filter(point => Number.isFinite(point.time));
+        points.sort((a, b) => a.time - b.time);
+        if (!points.length) throw new Error("points 沒有可用時間戳");
+        return points;
+      }
+
+      function getObservations(sourceKey, metric) {
+        const fields = metricFields(metric);
+        return state.points.map(point => {
+          const source = point.sources[sourceKey] || {}, used = finiteNumber(source[fields.used]), resetAt = epochValue(source[fields.reset]);
+          const hasError = typeof source.error === "string" && source.error.length > 0;
+          return { time: point.time, used: used !== null && used >= 0 && used <= 100 ? used : null, resetAt, mode: point.mode, hasError };
+        }).filter(observation => observation.used !== null && !observation.hasError);
+      }
+
+      function detectEvents(observations, metric) {
+        const threshold = 5, expectedMargin = metric === "5h" ? 12 * MINUTE : 20 * MINUTE, events = [];
+        for (let index = 1; index < observations.length; index += 1) {
+          const previous = observations[index - 1], current = observations[index], drop = previous.used - current.used;
+          const scheduleRolled = Number.isFinite(previous.resetAt) && Number.isFinite(current.resetAt) && current.resetAt - previous.resetAt > (metric === "5h" ? 20 * MINUTE : 45 * MINUTE);
+          const expected = previous.resetAt;
+          const expectedInWindow = Number.isFinite(expected) && expected >= previous.time - expectedMargin && expected <= current.time + expectedMargin;
+          if (drop >= threshold) {
+            const confirmed = expectedInWindow || (scheduleRolled && drop >= 20), eventTime = expectedInWindow ? clamp(expected, previous.time, current.time) : current.time;
+            events.push({ time: eventTime, from: previous.time, to: current.time, before: previous.used, after: current.used, drop, nextResetAt: current.resetAt, confidence: confirmed ? "confirmed" : "suspected", reason: expectedInWindow ? "數值跳變且符合預定 reset" : scheduleRolled ? "數值跳變且 reset 欄位更新" : "只有數值跳變" });
+          } else if (scheduleRolled && expectedInWindow) {
+            events.push({ time: clamp(expected, previous.time, current.time), from: previous.time, to: current.time, before: previous.used, after: current.used, drop: 0, nextResetAt: current.resetAt, confidence: "scheduled", reason: "reset 欄位更新，但快照未觀察到明顯跳變" });
+          }
+        }
+        const deduped = [];
+        for (const event of events.sort((a, b) => a.time - b.time)) {
+          const existing = deduped.find(item => Math.abs(item.time - event.time) < 10 * MINUTE);
+          if (!existing) deduped.push(event); else if (event.confidence === "confirmed" && existing.confidence !== "confirmed") Object.assign(existing, event);
+        }
+        return deduped;
+      }
+
+      function getRange(observations) {
+        if (!observations.length) return { visible: [], start: 0, end: 0 };
+        const end = observations[observations.length - 1].time, start = end - WINDOW_DAYS * DAY;
+        return { visible: observations.filter(item => item.time >= start), start, end };
+      }
+      function findNextReset(observations, endTime) {
+        const candidates = observations.filter(item => Number.isFinite(item.resetAt) && item.resetAt > endTime - 30 * MINUTE);
+        return candidates.length ? candidates[candidates.length - 1].resetAt : null;
+      }
+      function regressionSlope(observations) {
+        if (observations.length < 2) return null;
+        const origin = observations[0].time, xs = observations.map(item => (item.time - origin) / DAY), ys = observations.map(item => item.used), meanX = xs.reduce((sum, value) => sum + value, 0) / xs.length, meanY = ys.reduce((sum, value) => sum + value, 0) / ys.length;
+        let numerator = 0, denominator = 0;
+        xs.forEach((x, index) => { numerator += (x - meanX) * (ys[index] - meanY); denominator += (x - meanX) ** 2; });
+        return denominator > 0 ? numerator / denominator : null;
+      }
+
+      function calculateStats(observations, events) {
+        const range = getRange(observations), visible = range.visible;
+        if (!visible.length) return { visible, range, last: null, slope: null, target: null, nextReset: null, status: "na", cycleStart: null };
+        const last = visible[visible.length - 1], eventBefore = events.filter(event => event.time <= last.time).at(-1) || null, nextReset = findNextReset(observations, last.time);
+        const cycleStart = eventBefore && eventBefore.time >= observations[0].time - 45 * DAY ? eventBefore.time : visible[0].time;
+        const cycleObservations = observations.filter(item => item.time >= cycleStart && item.time <= last.time), rawSlope = regressionSlope(cycleObservations);
+        const slopeReady = cycleObservations.length >= 3 && last.time - cycleStart >= MIN_SLOPE_WINDOW;
+        const slope = slopeReady ? rawSlope : null;
+        const anchor = eventBefore && eventBefore.time >= observations[0].time - 45 * DAY ? 0 : visible[0].used;
+        const target = Number.isFinite(nextReset) && nextReset > cycleStart ? (100 - anchor) / ((nextReset - cycleStart) / DAY) : null;
+        let status = "na";
+        if (Number.isFinite(slope) && Number.isFinite(target) && target > 0) { const tolerance = state.tolerance / 100; status = slope > target * (1 + tolerance) ? "fast" : slope < target * (1 - tolerance) ? "slow" : "ok"; }
+        return { visible, range, last, slope, target, nextReset, status, cycleStart, eventBefore, slopeReady };
+      }
+      function statusText(status) { return { fast: "FAST", slow: "SLOW", ok: "OK", na: "N/A" }[status] || "N/A"; }
+      function createSvgElement(tag, attributes = {}) { const element = document.createElementNS("http://www.w3.org/2000/svg", tag); Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value))); return element; }
+      function addText(parent, x, y, text, className = "axis-text", anchor = "start") { const element = createSvgElement("text", { x, y, class: className, "text-anchor": anchor }); element.textContent = text; parent.appendChild(element); return element; }
+      function pathFor(points, xScale, yScale) { return points.map((point, index) => `${index ? "L" : "M"}${xScale(point.time).toFixed(2)},${yScale(remainingValue(point.used)).toFixed(2)}`).join(" "); }
+
+      function createIdealSegments(events, stats) {
+        if (!stats.visible.length || !Number.isFinite(stats.nextReset)) return [];
+        const firstTime = stats.range.start, lastTime = Math.max(stats.range.end, stats.nextReset), relevantEvents = events.filter(event => event.time >= firstTime - 45 * DAY && event.time <= lastTime), segments = [];
+        if (!relevantEvents.length) { const start = stats.visible[0]; if (stats.nextReset > start.time) segments.push({ from: { time: start.time, used: start.used }, to: { time: stats.nextReset, used: 100 } }); return segments; }
+        for (let index = 0; index < relevantEvents.length; index += 1) {
+          const event = relevantEvents[index], nextEvent = relevantEvents[index + 1];
+          const due = Number.isFinite(event.nextResetAt) && event.nextResetAt > event.time ? event.nextResetAt : stats.nextReset;
+          const end = Number.isFinite(due) && nextEvent ? Math.min(due, nextEvent.time) : due || nextEvent?.time;
+          if (!Number.isFinite(end) || end <= event.time) continue;
+          const usedAtEnd = Number.isFinite(due) && due > event.time ? clamp(100 * (end - event.time) / (due - event.time), 0, 100) : 100;
+          segments.push({ from: { time: event.time, used: 0 }, to: { time: end, used: usedAtEnd } });
+        }
+        return segments;
+      }
+
+      function renderChart(source, observations, events, stats) {
+        const panel = document.querySelector(`[data-source="${source.key}"]`), svg = panel.querySelector("svg"), empty = panel.querySelector(".empty-chart");
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+        if (!stats.visible.length) { empty.hidden = false; return; }
+        empty.hidden = true;
+        const width = Math.max(320, Math.round(svg.parentElement.clientWidth - 20)), height = 310, margin = { top: 20, right: 18, bottom: 42, left: 48 }, plotWidth = width - margin.left - margin.right, plotHeight = height - margin.top - margin.bottom;
+        const domainStart = stats.range.start, domainEnd = Math.max(stats.range.end, stats.nextReset || stats.range.end), x = time => margin.left + ((time - domainStart) / Math.max(1, domainEnd - domainStart)) * plotWidth, y = value => margin.top + plotHeight - (value / 100) * plotHeight;
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("aria-label", `${source.name} ${metricFields(state.metric).label} 剩餘額度圖表`);
+        const root = createSvgElement("g"); svg.appendChild(root);
+        if (domainEnd > stats.range.end) {
+          root.appendChild(createSvgElement("rect", { x: x(stats.range.end), y: margin.top, width: x(domainEnd) - x(stats.range.end), height: plotHeight, class: "future-zone" }));
+          addText(root, x(stats.range.end) + 6, margin.top + 14, "預測", "chart-label");
+        }
+        [0, 25, 50, 75, 100].forEach(value => { root.appendChild(createSvgElement("line", { x1: margin.left, x2: width - margin.right, y1: y(value), y2: y(value), class: "grid-line" })); addText(root, margin.left - 8, y(value) + 4, `${value}%`, "axis-text", "end"); });
+        root.appendChild(createSvgElement("line", { x1: margin.left, x2: margin.left, y1: margin.top, y2: margin.top + plotHeight, class: "axis-line" })); root.appendChild(createSvgElement("line", { x1: margin.left, x2: width - margin.right, y1: margin.top + plotHeight, y2: margin.top + plotHeight, class: "axis-line" }));
+        addText(root, margin.left + plotWidth / 2, height - 7, "時間", "axis-title", "middle"); const yTitle = addText(root, 12, margin.top + plotHeight / 2, "剩餘 %", "axis-title", "middle"); yTitle.setAttribute("transform", `rotate(-90 12 ${margin.top + plotHeight / 2})`);
+        const tickCount = width < 460 ? 4 : 6;
+        for (let index = 0; index < tickCount; index += 1) { const time = domainStart + ((domainEnd - domainStart) * index) / (tickCount - 1), xPos = x(time); root.appendChild(createSvgElement("line", { x1: xPos, x2: xPos, y1: margin.top + plotHeight, y2: margin.top + plotHeight + 5, class: "axis-line" })); addText(root, xPos, height - 20, formatDate(time), "axis-text", index === 0 ? "start" : index === tickCount - 1 ? "end" : "middle"); }
+        if (state.showIdeal) for (const segment of createIdealSegments(events, stats)) { const from = { time: Math.max(domainStart, segment.from.time), used: segment.from.used }, to = { time: Math.min(domainEnd, segment.to.time), used: segment.to.used }; if (to.time > from.time) root.appendChild(createSvgElement("path", { d: `M${x(from.time)},${y(remainingValue(from.used))} L${x(to.time)},${y(remainingValue(to.used))}`, class: "ideal-line" })); }
+        for (const event of events) { if (event.time < domainStart || event.time > domainEnd) continue; const eventX = x(event.time); root.appendChild(createSvgElement("line", { x1: eventX, x2: eventX, y1: margin.top, y2: margin.top + plotHeight, class: `event-line ${event.confidence === "suspected" ? "suspected" : ""}` })); root.appendChild(createSvgElement("circle", { cx: eventX, cy: y(remainingValue(event.after)), r: 4, class: `event-dot ${event.confidence === "suspected" ? "suspected" : ""}` })); addText(root, eventX + 4, margin.top + 12, event.confidence === "confirmed" ? "R" : "?", "chart-label"); }
+        if (Number.isFinite(stats.nextReset) && stats.nextReset >= domainStart && stats.nextReset <= domainEnd) { const resetX = x(stats.nextReset); root.appendChild(createSvgElement("line", { x1: resetX, x2: resetX, y1: margin.top, y2: margin.top + plotHeight, class: "next-reset-line" })); addText(root, resetX - 4, margin.top + 26, "next", "chart-label", "end"); }
+        const visible = stats.visible; root.appendChild(createSvgElement("path", { d: pathFor(visible, x, y), class: "actual-line" })); for (const point of visible) root.appendChild(createSvgElement("circle", { cx: x(point.time), cy: y(remainingValue(point.used)), r: 2.6, fill: source.color }));
+        const hit = createSvgElement("rect", { x: margin.left, y: margin.top, width: plotWidth, height: plotHeight, class: "hit-area" }); root.appendChild(hit);
+        const tooltip = panel.querySelector(".tooltip");
+        hit.addEventListener("mousemove", event => { const rect = svg.getBoundingClientRect(), localX = ((event.clientX - rect.left) / rect.width) * width, time = domainStart + clamp((localX - margin.left) / plotWidth, 0, 1) * (domainEnd - domainStart); let nearest = visible[0]; for (const point of visible) if (Math.abs(point.time - time) < Math.abs(nearest.time - time)) nearest = point; tooltip.innerHTML = `<strong>${formatDateLong(nearest.time)}</strong><br>剩餘額度 ${formatPct(remainingValue(nearest.used))}<br>消耗斜率依內部資料計算`; const panelRect = panel.querySelector(".plot-wrap").getBoundingClientRect(); tooltip.style.left = `${event.clientX - panelRect.left}px`; tooltip.style.top = `${event.clientY - panelRect.top}px`; tooltip.hidden = false; });
+        hit.addEventListener("mouseleave", () => { tooltip.hidden = true; });
+      }
+
+      function buildPanel(source) {
+        const panel = document.createElement("article"); panel.className = "chart-panel"; panel.dataset.source = source.key; panel.style.setProperty("--source-color", source.color);
+        panel.innerHTML = `<div class="panel-head"><div><div class="panel-title"><span class="source-dot" aria-hidden="true"></span><h2 class="source-name">${source.name}</h2></div><p class="source-note">目前週期消耗與 reset 推定</p></div><div class="panel-status"><span class="status-label na">N/A</span><div class="panel-stats"><span class="current-stat">目前 --</span><span class="slope-stat">斜率 --</span></div></div></div><div class="plot-wrap"><svg class="chart" role="img"></svg><div class="empty-chart">尚無此額度的有效資料</div><div class="tooltip" role="tooltip" hidden></div></div><div class="panel-foot"><span class="reset-stat">下一次 reset --</span><span class="coverage-stat">-- 個點</span></div>`;
+        return panel;
+      }
+      function updatePanel(source, observations, events, stats) {
+        const panel = document.querySelector(`[data-source="${source.key}"]`), status = panel.querySelector(".status-label"); status.textContent = statusText(stats.status); status.className = `status-label ${stats.status}`;
+        panel.querySelector(".current-stat").textContent = `剩餘 ${stats.last ? formatPct(remainingValue(stats.last.used)) : "--"}`; panel.querySelector(".slope-stat").textContent = `實測斜率 ${Number.isFinite(stats.slope) ? `${stats.slope.toFixed(1)}%/日` : "--"}`;
+        panel.querySelector(".reset-stat").textContent = Number.isFinite(stats.nextReset) ? `下一次 reset ${formatDate(stats.nextReset)}（${formatDuration(stats.nextReset - (stats.last?.time || stats.nextReset))}）` : "下一次 reset --";
+        panel.querySelector(".coverage-stat").textContent = `${stats.visible.length} 個點 · 目標消耗 ${Number.isFinite(stats.target) ? `${stats.target.toFixed(1)}%/日` : "--"}`; renderChart(source, observations, events, stats);
+      }
+      function renderEvents() {
+        const rows = [];
+        for (const source of SOURCES) { const observations = getObservations(source.key, state.metric); if (!observations.length) continue; const events = detectEvents(observations, state.metric), filtered = events.filter(event => event.time >= observations.at(-1).time - WINDOW_DAYS * DAY); filtered.slice(-8).forEach(event => rows.push({ source, event })); }
+        rows.sort((a, b) => b.event.time - a.event.time);
+        if (!rows.length) { eventsBody.innerHTML = '<tr><td colspan="7" class="no-events">目前範圍沒有偵測到 reset 或額度大幅回升。</td></tr>'; return; }
+        eventsBody.innerHTML = rows.map(({ source, event }) => `<tr><td>${source.name}</td><td>${metricFields(state.metric).label}</td><td>${formatDateLong(event.time)}</td><td>${formatDate(event.from)} ～ ${formatDate(event.to)}</td><td>${formatPct(remainingValue(event.before))} → ${formatPct(remainingValue(event.after))}</td><td><span class="confidence ${event.confidence}">${event.confidence === "confirmed" ? "確認" : event.confidence === "scheduled" ? "預定" : "疑似"}</span></td><td>${event.reason}</td></tr>`).join("");
+      }
+      function render() {
+        if (!state.points.length) return; const fields = metricFields(state.metric); let totalValid = 0;
+        for (const source of SOURCES) { const observations = getObservations(source.key, state.metric), events = detectEvents(observations, state.metric), stats = calculateStats(observations, events); totalValid += stats.visible.length; updatePanel(source, observations, events, stats); }
+        renderEvents(); const last = state.points.at(-1), ingest = state.raw.last_ingest_at || state.raw.exported_at; sourceStatus.textContent = `${state.sourceLabel} · ${state.points.length} 個歷史點 · ${fields.label} · 最新 ${formatDateLong(last.time)}${ingest ? ` · ingest ${ingest}` : ""}`; setNotice(`已載入 ${state.points.length} 個歷史點；圖表固定顯示最近 ${WINDOW_DAYS} 天，共 ${totalValid} 個有效 ${fields.label} 觀測值。`, "success");
+      }
+      function usePayload(raw, label) { state.raw = raw; state.points = normalizePayload(raw); state.sourceLabel = label; render(); }
+      async function loadOnline() {
+        setNotice("正在載入線上資料……");
+        try { const response = await fetch("/data", { cache: "no-store" }); if (!response.ok) throw new Error(`HTTP ${response.status}`); usePayload(await response.json(), "local proxy /data"); }
+        catch (localError) { try { const response = await fetch(DATA_URL, { cache: "no-store" }); if (!response.ok) throw new Error(`HTTP ${response.status}`); usePayload(await response.json(), "cloud /data"); } catch (remoteError) { setNotice(`線上資料載入失敗：${remoteError.message}。若直接開啟 HTML，請用 web/serve.py，或匯入 JSON 檔。`, "error"); } }
+      }
+      $("#loadOnline").addEventListener("click", loadOnline);
+      $("#fileInput").addEventListener("change", event => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { try { usePayload(JSON.parse(String(reader.result)), file.name); } catch (error) { setNotice(`JSON 匯入失敗：${error.message}`, "error"); } }; reader.onerror = () => setNotice("無法讀取 JSON 檔。", "error"); reader.readAsText(file); });
+      $("#metricSelect").addEventListener("change", event => { state.metric = event.target.value; render(); });
+      $("#toleranceInput").addEventListener("change", event => { state.tolerance = clamp(Number(event.target.value) || 0, 0, 100); event.target.value = state.tolerance; render(); }); $("#idealToggle").addEventListener("change", event => { state.showIdeal = event.target.checked; render(); }); window.addEventListener("resize", () => { if (state.points.length) render(); });
+      SOURCES.forEach(source => chartGrid.appendChild(buildPanel(source)));
+      loadOnline();
+    })();
+  </script>
+</body>
+</html>

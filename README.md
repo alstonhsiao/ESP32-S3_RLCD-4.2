@@ -8,13 +8,14 @@
 
 ---
 
-## 現況（2026-08-07）
+## 現況（2026-08-11）
 
 | 項目 | 狀態 |
 | --- | --- |
 | 框架 | **Arduino + U8g2**（已鎖定） |
 | Hello 螢幕 | ✅ `firmware/hello_rlcd` |
-| AI 用量儀表 | ✅ `firmware/aiusage_home` — P0/P1/P2/P3 已上板可用 |
+| AI 用量儀表 | ✅ `firmware/aiusage_home` — P0/P1/P2/P3 已上板；P4–P7 四源圖表已加入，待燒錄驗證 |
+| Web 用量分析 | ✅ `web/aiusage-analysis.html` — 四來源分圖、reset 與斜率判定 |
 | 資料源 | `https://aiusage-web.zeabur.app/data`（週剩餘 % = 100 − used） |
 | 換頁 | **短按 BOOT**；長按 3s 配網（AP `AIUsage-RLCD`，僅 2.4 GHz） |
 | 電池粗估 | 短測與追加觀測結果不同 → 滿電約兩至三天的區間推算（完整長測待做，見 [`docs/power-and-progress.md`](docs/power-and-progress.md)） |
@@ -87,7 +88,7 @@ BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
 - [x] 框架 Arduino + U8g2
 - [x] aiusage wireframe（`ui/`）
 - [x] Hello RLCD
-- [x] aiusage P0/P1/P2/P3 + BOOT 翻頁
+- [x] aiusage P0–P7 + BOOT 翻頁（P4–P7 為四個來源的最近 10 天圖表）
 
 ### Phase 1 — 打磨與感測（下一步）
 
@@ -115,6 +116,9 @@ BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
 ├── docs/specs/               # 硬體 SPEC + PDF
 ├── ui/                       # 單色 wireframe
 │   └── aiusage-wireframe.html
+├── web/                      # 電腦端用量分析原型
+│   ├── aiusage-analysis.html
+│   └── serve.py
 └── firmware/
     ├── hello_rlcd/           # 最小顯示驗證
     └── aiusage_home/         # AI 週剩餘儀表（主 sketch）
