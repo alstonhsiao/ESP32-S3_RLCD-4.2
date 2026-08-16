@@ -75,6 +75,7 @@ Type-C 或 18650 插拔時勿以螢幕受力；文件不得鼓勵暴力拆裝或
 - 功能優先序：可靠顯示與方向對比 → 時鐘／日曆／溫濕度／電池 → 頁面與按鍵 → Wi-Fi／MQTT／HA → 語音與 AI。
 - 靜態畫面要避免無意義全屏刷新；儀表預設約 30–60 秒級更新，互動時才即時。連續 Wi-Fi、語音、高 FPS 動畫都要標註高耗電。
 - aiusage 的核心語義是「週剩餘 % = `100 − used_weekly_pct`」；不要在 RLCD 上原樣渲染彩色網頁。
+- 資料源是 `https://aiusage-web.zeabur.app/data`，背後為雲端 SQLite（Zeabur persistent volume，2026-08-16 起），由本機 `usage-history.db` upsert 累積。韌體在 `/data` 返回 0 points 時自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試一次；所有失敗路徑有 Serial 診斷輸出。
 - `secrets.h` 可以在本機覆寫 Wi-Fi，但不得提交；只提交 `secrets.h.example`。
 
 ## 實作前檢查清單
@@ -97,6 +98,7 @@ Type-C 或 18650 插拔時勿以螢幕受力；文件不得鼓勵暴力拆裝或
 
 - [ ] 說明設計意圖，不只列檔名或函式名。
 - [ ] 說明是否改變資料拉取、畫面刷新、Wi-Fi 連線或電池消耗。
+- [ ] 若觸及 `/data` 抓取或 `trigger` 邏輯，確認空資料自動恢復路徑仍正常。
 - [ ] 只做小而可驗證的修改；不自動 commit 或 push。
 
 ## 文件維護規則
@@ -117,6 +119,10 @@ Type-C 或 18650 插拔時勿以螢幕受力；文件不得鼓勵暴力拆裝或
 - 符合下列任一條件時「升格」：同類坑第二次發生，或屬高風險事故。
 - 升格 = 在 Hub 對應規則後追加一行反例，以及 troubleshooting 條目編號。
 - 未升格的教訓留在 troubleshooting 檔即可，不要把 Hub 當事故簿。
+
+### 已解決事故（2026-08-16）
+
+- **螢幕反覆沒資料**（同類發生多次 → 升格）：舊版雲端 `usage-web` 用檔案系統 JSON 快取（`history.json`），Zeabur 重新部署時清空 → `GET /data` 返回 `{"points":[]}` → 韌體直接放棄顯示，且所有失敗路徑無 Serial 輸出，無法診斷。修復：(1) 雲端改用 SQLite + persistent volume（keyboardmaestro 專案 `autousage/usage-web/db.js`）；(2) 韌體在 0 points 時自動 `POST /trigger` 觸發 KM 查詢 + sync 再重試；(3) 所有失敗路徑加 Serial 診斷。反例：不要假設雲端 `/data` 永遠有資料；韌體必須能處理空回應並自動恢復。
 
 ### 路徑檢查與瘦身協議
 

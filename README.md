@@ -8,15 +8,16 @@
 
 ---
 
-## 現況（2026-08-11）
+## 現況（2026-08-16）
 
 | 項目 | 狀態 |
 | --- | --- |
 | 框架 | **Arduino + U8g2**（已鎖定） |
 | Hello 螢幕 | ✅ `firmware/hello_rlcd` |
-| AI 用量儀表 | ✅ `firmware/aiusage_home` — P0/P1/P2/P3 已上板；P4–P7 四源圖表已加入，待燒錄驗證 |
+| AI 用量儀表 | ✅ `firmware/aiusage_home` — P0–P7 全部上板驗證 |
 | Web 用量分析 | ✅ `web/aiusage-analysis.html` — 四來源分圖、reset 與斜率判定 |
-| 資料源 | `https://aiusage-web.zeabur.app/data`（週剩餘 % = 100 − used） |
+| 資料源 | `https://aiusage-web.zeabur.app/data`（雲端 SQLite + persistent volume；週剩餘 % = 100 − used） |
+| 資料可靠性 | ✅ 韌體在 `/data` 返回 0 points 時自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試 |
 | 換頁 | **短按 BOOT**；長按 3s 配網（AP `AIUsage-RLCD`，僅 2.4 GHz） |
 | 電池粗估 | 短測與追加觀測結果不同 → 滿電約兩至三天的區間推算（完整長測待做，見 [`docs/power-and-progress.md`](docs/power-and-progress.md)） |
 
@@ -89,6 +90,8 @@ BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
 - [x] aiusage wireframe（`ui/`）
 - [x] Hello RLCD
 - [x] aiusage P0–P7 + BOOT 翻頁（P4–P7 為四個來源的最近 10 天圖表）
+- [x] 雲端資料源改用 SQLite + persistent volume（2026-08-16）
+- [x] 韌體自動恢復：`/data` 空資料時自動觸發上游刷新（2026-08-16）
 
 ### Phase 1 — 打磨與感測（下一步）
 

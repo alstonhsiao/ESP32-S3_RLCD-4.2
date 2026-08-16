@@ -2,6 +2,9 @@
  * aiusage_home — AI week-remain dashboard on Waveshare ESP32-S3-RLCD-4.2
  *
  * Data: GET https://aiusage-web.zeabur.app/data
+ *   Cloud SQLite (persistent volume) fed by local usage-history.db via upsert.
+ *   If /data returns 0 points, firmware auto-triggers POST /trigger to kick
+ *   KM → notify_all → sync_usage_web, then re-fetches.
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
@@ -45,8 +48,12 @@
 #define MIN_SLOPE_WINDOW_SEC (6L * 3600L)
 #define SLOPE_TOLERANCE 0.10f
 
+// Data source: cloud SQLite (persistent volume on Zeabur), fed by local SQLite upsert.
+// GET /data reads from cloud DB; POST /trigger kicks KM to query AI quota + sync.
 static const char* DATA_URL = "https://aiusage-web.zeabur.app/data";
+static const char* TRIGGER_URL = "https://aiusage-web.zeabur.app/trigger";
 static const uint32_t POLL_MS = 900000;      // fetch cloud data every 15 minutes
+static const uint32_t TRIGGER_RETRY_MS = 8000; // wait for KM→sync round-trip before re-fetch
 static const uint32_t RENDER_MS = 60000;     // fallback redraw if NTP not ready
 static const uint32_t AUTO_PAGE_MS = 300000; // auto flip every 5 minutes
 static const uint32_t LONG_PRESS_MS = 3000;
@@ -354,6 +361,24 @@ static long pointEpoch(JsonObject pt) {
 }
 
 // ---- fetch ----
+static bool triggerUpstreamRefresh() {
+  WiFiClientSecure tClient;
+  tClient.setInsecure();
+  tClient.setTimeout(12);
+  HTTPClient thttp;
+  thttp.setConnectTimeout(10000);
+  thttp.setTimeout(12000);
+  if (!thttp.begin(tClient, TRIGGER_URL)) {
+    Serial.println("trigger: begin fail");
+    return false;
+  }
+  int code = thttp.POST("");
+  String body = thttp.getString();
+  thttp.end();
+  Serial.printf("trigger: HTTP %d body=%s\n", code, body.c_str());
+  return code == 200;
+}
+
 static bool parsePayload(const String& payload) {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload);
@@ -461,18 +486,58 @@ static bool pollData() {
   if (code != 200) {
     snprintf(gLastErr, sizeof(gLastErr), "HTTP %d", code);
     gLink = LinkState::HttpError;
+    Serial.printf("poll: HTTP %d\n", code);
     http.end();
     return false;
   }
 
   String body = http.getString();
   http.end();
+  Serial.printf("poll: HTTP 200 body=%d bytes\n", (int)body.length());
 
   if (!parsePayload(body)) {
     gLink = LinkState::ParseError;
+    Serial.println("poll: parse error");
     return false;
   }
   if (!gSnap.valid || gSnap.pointCount <= 0) {
+    // /data returned empty — upstream cache may be stale. Trigger a refresh
+    // then retry once after a short delay.
+    Serial.println("poll: 0 points, triggering upstream refresh");
+    triggerUpstreamRefresh();
+    delay(TRIGGER_RETRY_MS);
+
+    // Re-fetch /data
+    WiFiClientSecure client2;
+    client2.setInsecure();
+    client2.setTimeout(12);
+    HTTPClient http2;
+    http2.setConnectTimeout(10000);
+    http2.setTimeout(12000);
+    if (http2.begin(client2, DATA_URL)) {
+      int code2 = http2.GET();
+      if (code2 == 200) {
+        String body2 = http2.getString();
+        Serial.printf("poll retry: HTTP 200 body=%d bytes\n", (int)body2.length());
+        if (parsePayload(body2) && gSnap.valid && gSnap.pointCount > 0) {
+          http2.end();
+          gLink = LinkState::Online;
+          gLastErr[0] = 0;
+          Serial.printf("poll ok (after trigger): pts=%d trend=%d C=%.0f X=%.0f G=%.0f O=%.0f\n",
+                        gSnap.pointCount, gSnap.trendN,
+                        gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
+                        gSnap.src[2].remainWeek, gSnap.src[3].remainWeek);
+          return true;
+        }
+        Serial.printf("poll retry: still empty (pts=%d)\n", gSnap.pointCount);
+      } else {
+        Serial.printf("poll retry: HTTP %d\n", code2);
+      }
+      http2.end();
+    } else {
+      Serial.println("poll retry: begin fail");
+    }
+
     gLink = LinkState::Empty;
     snprintf(gLastErr, sizeof(gLastErr), "0 points");
     return false;
