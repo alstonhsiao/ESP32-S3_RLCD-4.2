@@ -652,7 +652,7 @@ static void renderDetail() {
     else snprintf(week, sizeof(week), "%.0f%%", s.remainWeek);
     if (!s.present || !s.ok || s.remain5h < 0) snprintf(five, sizeof(five), "--");
     else snprintf(five, sizeof(five), "%.0f%%", s.remain5h);
-    fmtReset(s.resetWeek, rst, sizeof(rst));
+    fmtClockHm(s.resetWeek, rst, sizeof(rst));
 
     u8g2.setFont(u8g2_font_helvB12_tf);
     u8g2.drawStr(90, y0 + 14, week);
@@ -673,8 +673,8 @@ static void renderDetail() {
       u8g2.setFont(u8g2_font_6x13_tf);
       char note[28];
       if (s.remain5h >= 0 && s.remain5h < 10.0f) {
-        char r5[12];
-        fmtReset(s.reset5h, r5, sizeof(r5));
+        char r5[16];
+        fmtClockHm(s.reset5h, r5, sizeof(r5));
         snprintf(note, sizeof(note), "5h LOW  reset %s", r5);
       } else {
         snprintf(note, sizeof(note), "WEEK LOW");

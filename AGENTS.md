@@ -8,6 +8,7 @@
 | --- | --- |
 | 確認硬體事實、顯示方向或 GPIO | `docs/specs/INDEX.md` → `HARDWARE-SPEC.md`／`PINOUT.md`／schematic |
 | 了解 Arduino 版本、編譯、燒錄、配網與復原 | `docs/firmware-operations.md`、`firmware/INDEX.md` |
+| 把韌體燒到已連線的板子 | `.agents/skills/flash-firmware/SKILL.md` → `scripts/flash.sh` |
 | 修改或除錯 aiusage 主韌體 | `firmware/aiusage_home/INDEX.md` → `aiusage_home.ino` |
 | 調整 Hello 顯示驗證 | `firmware/hello_rlcd/README.md`、`firmware/hello_rlcd/hello_rlcd.ino` |
 | 調整版面、頁面或單色 wireframe | `docs/ui-and-data.md`、`ui/INDEX.md` |
@@ -16,6 +17,20 @@
 | 人類導向的專案總覽 | `README.md` |
 
 各高 token 目錄的 agent 路由見其根目錄 `INDEX.md`；`README.md` 仍是人類使用說明。
+
+## 跨工具 Skills
+
+專案 skill 的唯一正本在 `.agents/skills/<name>/`（`SKILL.md` + 可選 `scripts/`）。Grok、Claude、Codex、Cursor 或其他讀本檔的 agent 都必須遵守：
+
+1. 對應工作開始前先讀該 skill 的 `SKILL.md`，再執行它指定的腳本。
+2. 不要因為自己的工具沒有自動載入 skill，就改自組流程。
+3. 新 skill 只新增在 `.agents/skills/`，不要在 `.grok/skills/` 或 `.claude/skills/` 另寫一份。那兩處若存在，只應是指向正本的 symlink。
+
+目前 skill：
+
+| 工作 | 正本 |
+| --- | --- |
+| 編譯並燒錄 RLCD 韌體 | `.agents/skills/flash-firmware/SKILL.md` |
 
 ## 專案方向與高風險規則
 

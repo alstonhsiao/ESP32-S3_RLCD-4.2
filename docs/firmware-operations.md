@@ -15,6 +15,8 @@
 
 ## 編譯、燒錄與監看
 
+Agent 燒錄請先讀 `.agents/skills/flash-firmware/SKILL.md`，再跑同目錄 `scripts/flash.sh`，不要自組不完整 FQBN。人類也可直接用同一支腳本。
+
 先用 `arduino-cli board list` 確認目前 PORT，再依目標 sketch 執行：
 
 ```bash
