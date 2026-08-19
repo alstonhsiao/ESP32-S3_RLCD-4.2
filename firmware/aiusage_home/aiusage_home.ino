@@ -1411,7 +1411,13 @@ static void handleButton(uint32_t now) {
   if (gLastBtn == LOW && b == HIGH) {
     uint32_t held = gBtnDownMs ? (now - gBtnDownMs) : 0;
     if (!gLongPressFired && held >= 30 && held < LONG_PRESS_MS) {
-      // manual flip + restart 10s auto-page timer
+      // manual flip: fetch latest cloud data, then render
+      Serial.println("BOOT short-press: polling cloud data before page flip");
+      if (ensureWifi(WIFI_CONNECT_MS)) {
+        pollData();
+        radioOff();
+        gLastPoll = now;
+      }
       advancePage(now, "BOOT");
     }
     gBtnDownMs = 0;
