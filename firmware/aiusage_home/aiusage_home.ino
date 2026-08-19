@@ -107,8 +107,12 @@ static int gLastBtn = HIGH;
 static uint32_t gBtnDownMs = 0;
 static bool gLongPressFired = false;
 static int gLastDrawnMinuteKey = -1;  // hour*60+min; skip full redraw if unchanged
+static bool gShowUpdateBadge = false;      // true → draw "↻" badge after render
+static uint32_t gUpdateBadgeUntil = 0;     // millis() when badge expires
+static uint32_t gLastManualFlip = 0;       // millis() of last BOOT short-press; 0 = none pending
 
 static void render();  // forward
+static void drawUpdateBadge();
 static bool haveLocalTime(struct tm* t);
 static bool ensureWifi(uint32_t timeoutMs = WIFI_CONNECT_MS);
 static void radioOff();
@@ -1277,6 +1281,22 @@ static void render() {
   else if (gPage == 2) renderTrend();
   else if (gPage == 3) renderPace();
   else renderSourceTrend(gPage - CHART_PAGE_BASE);
+
+  drawUpdateBadge();
+}
+
+// Small "UPD" badge in top-right corner to signal fresh data was fetched.
+// Drawn after page render so it overlays regardless of current page.
+static void drawUpdateBadge() {
+  if (!gShowUpdateBadge) return;
+  // Inverted box: black background, white text
+  u8g2.setDrawColor(1);
+  u8g2.drawBox(W - 28, 0, 28, 12);
+  u8g2.setDrawColor(0);
+  u8g2.setFont(u8g2_font_6x13_tf);
+  u8g2.drawStr(W - 26, 10, "UPD");
+  u8g2.setDrawColor(1);
+  u8g2.sendBuffer();
 }
 
 // ---- WiFi (connect only for poll / portal; radio OFF between) ----
@@ -1411,13 +1431,8 @@ static void handleButton(uint32_t now) {
   if (gLastBtn == LOW && b == HIGH) {
     uint32_t held = gBtnDownMs ? (now - gBtnDownMs) : 0;
     if (!gLongPressFired && held >= 30 && held < LONG_PRESS_MS) {
-      // manual flip: fetch latest cloud data, then render
-      Serial.println("BOOT short-press: polling cloud data before page flip");
-      if (ensureWifi(WIFI_CONNECT_MS)) {
-        pollData();
-        radioOff();
-        gLastPoll = now;
-      }
+      // manual flip: page immediately; deferred poll after 10s of inactivity
+      gLastManualFlip = now;
       advancePage(now, "BOOT");
     }
     gBtnDownMs = 0;
@@ -1475,7 +1490,20 @@ void loop() {
     advancePage(now, "auto");
   }
 
-  if (now - gLastPoll >= POLL_MS) {
+  // Deferred poll: if user manually flipped and then stayed on the same page
+  // for 10 seconds, fetch cloud data and refresh the screen.
+  static const uint32_t MANUAL_POLL_DELAY_MS = 10000;
+  if (gLastManualFlip && !busySetup && (now - gLastManualFlip >= MANUAL_POLL_DELAY_MS)) {
+    gLastManualFlip = 0;  // one-shot
+    Serial.println("deferred poll: 10s idle after manual flip");
+    pollCycle();  // ensureWifi → GET → radioOff
+    gLastPoll = now;
+    gShowUpdateBadge = true;
+    gUpdateBadgeUntil = now + 3000;  // badge visible for 3 seconds
+    render();
+    noteDrawnMinute();
+    gLastRender = now;
+  } else if (now - gLastPoll >= POLL_MS) {
     pollCycle();  // ensureWifi → GET → radioOff
     render();
     noteDrawnMinute();
@@ -1486,6 +1514,13 @@ void loop() {
     gLastRender = now;
   } else if (gLastDrawnMinuteKey < 0 && (now - gLastRender >= RENDER_MS)) {
     // No NTP yet: occasional redraw so UI is not frozen forever
+    render();
+    gLastRender = now;
+  }
+
+  // Clear update badge after timeout
+  if (gShowUpdateBadge && (int32_t)(now - gUpdateBadgeUntil) >= 0) {
+    gShowUpdateBadge = false;
     render();
     gLastRender = now;
   }
