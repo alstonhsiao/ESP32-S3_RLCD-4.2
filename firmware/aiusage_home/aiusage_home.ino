@@ -8,11 +8,9 @@
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
- *   P0 Home   — clock + 2x2 week remain
- *   P1 Detail — week / 5h / reset table
- *   P2 Trend  — last 10d remain% polylines (4 series, thick styles)
- *   P3 Pace   — 24h budget table (remain/days, week end, 5h end)
- *   P4-P7    — one 10d remain% chart per source, reset-aware ideal slope
+ *   P0 Combined — merged table: remain% + 5h + day% + reset per source
+ *   P1 Trend  — last 10d remain% polylines (4 series, thick styles)
+ *   P2-P5    — one 10d remain% chart per source, reset-aware ideal slope
  * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes
  * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD)
  *
@@ -41,8 +39,8 @@
 
 #define W 400
 #define H 300
-#define PAGE_COUNT 8
-#define CHART_PAGE_BASE 4
+#define PAGE_COUNT 6
+#define CHART_PAGE_BASE 2
 #define TREND_N 128
 #define TREND_WINDOW_SEC (10L * 86400L)
 #define MIN_SLOPE_WINDOW_SEC (6L * 3600L)
@@ -241,18 +239,6 @@ static float daysUntil(long resetUnix) {
   long s = resetUnix - (long)now;
   if (s <= 0) return 0.0f;
   return (float)s / 86400.0f;
-}
-
-// Local HH:MM from epoch (device TZ via configTime).
-static void fmtClockHm(long resetUnix, char* out, size_t n) {
-  if (resetUnix <= 0) {
-    snprintf(out, n, "--");
-    return;
-  }
-  time_t t = (time_t)resetUnix;
-  struct tm tm;
-  localtime_r(&t, &tm);
-  snprintf(out, n, "%02d:%02d", tm.tm_hour, tm.tm_min);
 }
 
 // Suggested 24h spend % = week remain% / days left. -1 if N/A.
@@ -633,132 +619,6 @@ static void drawSourceCell(int x, int y, const SourceUi& s, bool withReset) {
 }
 
 // ---- pages ----
-static void renderHome() {
-  u8g2.clearBuffer();
-  u8g2.setDrawColor(1);
-  gBat = readBatteryPct();
-
-  struct tm t;
-  bool haveT = haveLocalTime(&t);
-  char hhmm[8] = "--:--";
-  char dateLine[20] = "";
-  if (haveT) {
-    snprintf(hhmm, sizeof(hhmm), "%02d:%02d", t.tm_hour, t.tm_min);
-    const char* wd[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-    const char* mo[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-                        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
-    snprintf(dateLine, sizeof(dateLine), "%s · %s %d", wd[t.tm_wday], mo[t.tm_mon], t.tm_mday);
-  }
-
-  u8g2.setFont(u8g2_font_logisoso32_tn);
-  u8g2.drawStr(8, 40, hhmm);
-  u8g2.setFont(u8g2_font_6x13_tf);
-  if (dateLine[0]) u8g2.drawStr(10, 56, dateLine);
-
-  u8g2.setFont(u8g2_font_6x13_tf);
-  strRight(W - 12, 16, "AI USAGE");
-  strRight(W - 12, 32, "WEEK REMAIN");
-  char meta[28];
-  if (gSnap.pointCount > 0) snprintf(meta, sizeof(meta), "%d pts · cloud", gSnap.pointCount);
-  else snprintf(meta, sizeof(meta), "cloud");
-  strRight(W - 12, 48, meta);
-
-  u8g2.drawHLine(8, 60, W - 16);
-  u8g2.drawHLine(8, 61, W - 16);
-
-  drawSourceCell(12, 74, gSnap.src[0], true);
-  u8g2.drawVLine(200, 68, 96);
-  drawSourceCell(212, 74, gSnap.src[1], true);
-
-  u8g2.drawHLine(8, 168, W - 16);
-
-  drawSourceCell(12, 180, gSnap.src[2], true);
-  u8g2.drawVLine(200, 174, 76);
-  drawSourceCell(212, 180, gSnap.src[3], true);
-
-  drawBottomBar(nullptr);
-  u8g2.sendBuffer();
-}
-
-static void renderDetail() {
-  u8g2.clearBuffer();
-  u8g2.setDrawColor(1);
-  gBat = readBatteryPct();
-
-  u8g2.setFont(u8g2_font_helvB12_tf);
-  u8g2.drawStr(10, 18, "USAGE DETAIL");
-  u8g2.setFont(u8g2_font_6x13_tf);
-  strRight(W - 12, 16, "REMAIN=100-USED");
-  u8g2.drawHLine(8, 24, W - 16);
-  u8g2.drawHLine(8, 25, W - 16);
-
-  // column headers — same size as row values
-  u8g2.setFont(u8g2_font_6x13_tf);
-  u8g2.drawStr(10, 40, "SRC");
-  u8g2.drawStr(90, 40, "WEEK");
-  u8g2.drawStr(200, 40, "5H");
-  u8g2.drawStr(290, 40, "RESET W");
-
-  for (int i = 0; i < 4; i++) {
-    const SourceUi& s = gSnap.src[i];
-    int y0 = 48 + i * 50;
-    bool warn = s.ok && ((s.remainWeek >= 0 && s.remainWeek < 10.0f) ||
-                         (s.remain5h >= 0 && s.remain5h < 10.0f));
-
-    if (warn) {
-      u8g2.setDrawColor(1);
-      u8g2.drawBox(8, y0 - 2, 384, 46);
-      u8g2.setDrawColor(0);  // inverted text on filled box
-    } else {
-      u8g2.setDrawColor(1);
-    }
-
-    u8g2.setFont(u8g2_font_helvB10_tf);
-    u8g2.drawStr(12, y0 + 12, s.name);
-
-    char week[12], five[12], rst[16];
-    if (!s.present || !s.ok || s.remainWeek < 0) snprintf(week, sizeof(week), "--");
-    else snprintf(week, sizeof(week), "%.0f%%", s.remainWeek);
-    if (!s.present || !s.ok || s.remain5h < 0) snprintf(five, sizeof(five), "--");
-    else snprintf(five, sizeof(five), "%.0f%%", s.remain5h);
-    fmtClockHm(s.resetWeek, rst, sizeof(rst));
-
-    u8g2.setFont(u8g2_font_helvB12_tf);
-    u8g2.drawStr(90, y0 + 14, week);
-    u8g2.drawStr(200, y0 + 14, five);
-    u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.drawStr(290, y0 + 14, rst);
-
-    // mini week bar
-    if (s.ok && s.remainWeek >= 0) {
-      // when inverted, bar still uses current draw color (0 = "white" on black box)
-      int bx = 90, by = y0 + 22, bw = 100, bh = 8;
-      u8g2.drawFrame(bx, by, bw, bh);
-      int fill = (int)((bw - 4) * (s.remainWeek / 100.0f) + 0.5f);
-      if (fill > 0) u8g2.drawBox(bx + 2, by + 2, fill, bh - 4);
-    }
-
-    if (warn) {
-      u8g2.setFont(u8g2_font_6x13_tf);
-      char note[28];
-      if (s.remain5h >= 0 && s.remain5h < 10.0f) {
-        char r5[16];
-        fmtClockHm(s.reset5h, r5, sizeof(r5));
-        snprintf(note, sizeof(note), "5h LOW  reset %s", r5);
-      } else {
-        snprintf(note, sizeof(note), "WEEK LOW");
-      }
-      u8g2.drawStr(12, y0 + 40, note);
-      u8g2.setDrawColor(1);
-    } else if (i < 3) {
-      u8g2.drawHLine(8, y0 + 44, W - 16);
-    }
-  }
-
-  drawBottomBar(nullptr);
-  u8g2.sendBuffer();
-}
-
 // line styles: 0 solid, 1 thick dotted, 2 thick dash-dot, 3 double solid
 static void plotSegment(int x0, int y0, int x1, int y1, int style) {
   if (style == 0) {
@@ -1166,102 +1026,69 @@ static void renderSourceTrend(int srcIdx) {
   u8g2.sendBuffer();
 }
 
-// P3 — table: daily budget = week_remain% / days_until_weekly_reset
-static void renderPace() {
+// P0 (trial) — Detail + Pace merged into a 2x2 grid (same
+// quadrant positions and week-remain bar as drawSourceCell), with
+// 5h/day%/reset/pace packed under each source's bar. Calls the shared
+// drawSourceCell() used by renderHome but does not modify it.
+static void renderCombined() {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
   gBat = readBatteryPct();
 
   u8g2.setFont(u8g2_font_helvB12_tf);
-  u8g2.drawStr(10, 18, "24H BUDGET");
+  u8g2.drawStr(10, 18, "ALL DETAIL");
   u8g2.setFont(u8g2_font_6x13_tf);
-  strRight(W - 12, 16, "remain/days");
+  strRight(W - 12, 16, "REMAIN=100-USED");
   u8g2.drawHLine(8, 24, W - 16);
   u8g2.drawHLine(8, 25, W - 16);
 
-  // column headers
-  u8g2.setFont(u8g2_font_6x13_tf);
-  u8g2.drawStr(10, 40, "SRC");
-  u8g2.drawStr(88, 40, "DAY");
-  u8g2.drawStr(160, 40, "WEEK");
-  u8g2.drawStr(230, 40, "W END");
-  u8g2.drawStr(320, 40, "5H END");
-
-  // precompute daily budgets; invert row with highest day% (opportunity)
   float day[4];
   float best = -1.0f;
   int bestIdx = -1;
   for (int i = 0; i < 4; i++) {
     day[i] = dailyBudgetPct(gSnap.src[i]);
-    if (day[i] > best) {
-      best = day[i];
-      bestIdx = i;
-    }
+    if (day[i] > best) { best = day[i]; bestIdx = i; }
   }
+
+  // same 2x2 layout as renderHome(): cols at x=12/212, split at x=200
+  static const int cx[4] = {12, 212, 12, 212};
+  static const int cy[4] = {32, 32, 146, 146};
+  static const int crx[4] = {190, 388, 190, 388};  // right edge of each cell, for pace label
+
+  u8g2.drawVLine(200, 30, 106);
+  u8g2.drawHLine(8, 140, W - 16);
+  u8g2.drawVLine(200, 144, 106);
 
   for (int i = 0; i < 4; i++) {
     const SourceUi& s = gSnap.src[i];
-    int y0 = 48 + i * 50;
-    bool hi = (i == bestIdx && day[i] >= 0.0f);
+    int x = cx[i], ty = cy[i];
 
-    if (hi) {
-      u8g2.setDrawColor(1);
-      u8g2.drawBox(8, y0 - 2, 384, 46);
-      u8g2.setDrawColor(0);
-    } else {
-      u8g2.setDrawColor(1);
-    }
+    // name + big % + bar, identical to P0's cell (no reset line from here)
+    drawSourceCell(x, ty + 16, s, false);
 
+    // pace (OK/SLOW/FAST) on the name row, right-aligned — clear of the
+    // name/origin text on the left and the metric lines below
     u8g2.setFont(u8g2_font_helvB10_tf);
-    u8g2.drawStr(12, y0 + 12, s.name);
-    u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.drawStr(12, y0 + 28, paceLabel(day[i]));
+    strRight(crx[i], ty + 16, paceLabel(day[i]));
 
-    char dayS[12], weekS[12], wDays[12], wClk[8], hCd[12], hClk[8];
-
+    char five[12], dayS[12], r5[16], rw[16], line1[40], line2[40];
+    if (!s.present || !s.ok || s.remain5h < 0) snprintf(five, sizeof(five), "--");
+    else snprintf(five, sizeof(five), "%.0f%%", s.remain5h);
     if (day[i] < 0.0f) snprintf(dayS, sizeof(dayS), "--");
     else snprintf(dayS, sizeof(dayS), "%.0f%%", day[i]);
+    fmtReset(s.reset5h, r5, sizeof(r5));
+    fmtReset(s.resetWeek, rw, sizeof(rw));
 
-    if (!s.present || !s.ok || s.remainWeek < 0.0f) snprintf(weekS, sizeof(weekS), "--");
-    else snprintf(weekS, sizeof(weekS), "%.0f%%", s.remainWeek);
-
-    float dLeft = daysUntil(s.resetWeek);
-    if (dLeft < 0.0f) {
-      snprintf(wDays, sizeof(wDays), "--");
-      snprintf(wClk, sizeof(wClk), "--");
-    } else {
-      if (dLeft < 1.0f) snprintf(wDays, sizeof(wDays), "%.0fh", dLeft * 24.0f);
-      else snprintf(wDays, sizeof(wDays), "%.1fd", dLeft);
-      fmtClockHm(s.resetWeek, wClk, sizeof(wClk));
-    }
-
-    if (!s.present || !s.ok || s.reset5h <= 0 || s.remain5h < 0.0f) {
-      snprintf(hCd, sizeof(hCd), "--");
-      snprintf(hClk, sizeof(hClk), "--");
-    } else {
-      fmtReset(s.reset5h, hCd, sizeof(hCd));
-      fmtClockHm(s.reset5h, hClk, sizeof(hClk));
-    }
-
-    u8g2.setFont(u8g2_font_helvB12_tf);
-    u8g2.drawStr(88, y0 + 18, dayS);
-    u8g2.setFont(u8g2_font_helvB10_tf);
-    u8g2.drawStr(160, y0 + 18, weekS);
+    snprintf(line1, sizeof(line1), "5H:%s   | 5H reset %s", five, r5);
+    snprintf(line2, sizeof(line2), "DAY:%s%s  | W reset %s", dayS,
+             (i == bestIdx && day[i] >= 0.0f) ? "*" : "", rw);
 
     u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.drawStr(230, y0 + 12, wDays);
-    u8g2.drawStr(230, y0 + 28, wClk);
-    u8g2.drawStr(320, y0 + 12, hCd);
-    u8g2.drawStr(320, y0 + 28, hClk);
-
-    if (hi) {
-      u8g2.setDrawColor(1);
-    } else if (i < 3) {
-      u8g2.drawHLine(8, y0 + 44, W - 16);
-    }
+    u8g2.drawStr(x, ty + 80, line1);
+    u8g2.drawStr(x, ty + 96, line2);
   }
 
-  drawBottomBar("DAY=Wrem/days");
+  drawBottomBar(nullptr);  // show ingest time / status, same as P0
   u8g2.sendBuffer();
 }
 
@@ -1276,11 +1103,10 @@ static void render() {
     return;
   }
 
-  if (gPage == 0) renderHome();
-  else if (gPage == 1) renderDetail();
-  else if (gPage == 2) renderTrend();
-  else if (gPage == 3) renderPace();
-  else renderSourceTrend(gPage - CHART_PAGE_BASE);
+  if (gPage == 0) renderCombined();
+  else if (gPage == 1) renderTrend();
+  else if (gPage < CHART_PAGE_BASE + 4) renderSourceTrend(gPage - CHART_PAGE_BASE);
+  else renderCombined();
 
   drawUpdateBadge();
 }
@@ -1447,7 +1273,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("aiusage_home: boot (P0-P7 / 5m page / 15m poll / radio-off)");
+  Serial.println("aiusage_home: boot (P0-P5 / 5m page / 15m poll / radio-off)");
 
   pinMode(BTN_BOOT, INPUT_PULLUP);
   gLastBtn = digitalRead(BTN_BOOT);
