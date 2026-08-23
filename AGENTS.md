@@ -14,6 +14,7 @@
 | 調整版面、頁面或單色 wireframe | `docs/ui-and-data.md`、`ui/INDEX.md` |
 | 理解 aiusage API、頁面語義與刷新節奏 | `docs/ui-and-data.md` |
 | 查電池實測、待辦、歷史決策與刻意不做事項 | `docs/power-and-progress.md` |
+| 查已放棄、重複、未完成與待核准刪除項目 | `docs/cleanup-plan.md` |
 | 人類導向的專案總覽 | `README.md` |
 
 各高 token 目錄的 agent 路由見其根目錄 `INDEX.md`；`README.md` 仍是人類使用說明。

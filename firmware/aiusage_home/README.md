@@ -1,4 +1,4 @@
-# aiusage_home — P0 / P1 / P2 / P3 / P4–P7
+# aiusage_home — P0–P5
 
 從 `https://aiusage-web.zeabur.app/data` 拉 JSON，在 RLCD 畫 **週剩餘 %**（`100 − used_weekly_pct`）。
 
@@ -6,7 +6,7 @@
 
 | 操作 | 功能 |
 | --- | --- |
-| **短按 BOOT** | 循環：`P0 Home` → `P1 Detail` → `P2 Trend` → `P3 Pace` → `P4–P7 四源圖表` → … |
+| **短按 BOOT** | 循環：`P0 Combined` → `P1 Trend` → `P2–P5 四源圖表` → …；停止操作約 10 秒後拉取新資料 |
 | **長按 BOOT 約 3 秒** | 進入 WiFi 配網（AP `AIUsage-RLCD`） |
 
 BOOT 是板上靠近 USB 的 **BOOT** 側鍵（GPIO0），不是 PWR。
@@ -15,22 +15,21 @@ BOOT 是板上靠近 USB 的 **BOOT** 側鍵（GPIO0），不是 PWR。
 
 | 頁 | 內容 |
 | --- | --- |
-| **P0 Home** | 時鐘 + 四源週剩餘 % + bar |
-| **P1 Detail** | 表格式 WEEK / 5H / RESET；剩餘 &lt;10% 反白警示 |
-| **P2 Trend** | 最近 10 天、最多 128 點剩餘折線（四源線型不同）+ 100/7 輔助虛線 |
-| **P3 Pace** | **建議一天用額度**表：`日額% = 週剩% ÷ 剩餘天`；週結束倒數/時鐘、5h 結束倒數/時鐘；節奏 SLOW/OK/FAST；日額最高列反白 |
-| **P4–P7 Source Trend** | Claude / Codex / Grok / Ollama 各自一頁；最近 10 天剩餘曲線、實際時間軸、reset 標記、due/reset 理想斜率；提前 reset 時截斷理想線 |
+| **P0 Combined** | 2×2 四來源：週剩餘 % + bar、5h、建議一天額度、週／5h reset、SLOW/OK/FAST |
+| **P1 Trend** | 最近 10 天、最多 128 點剩餘折線（四源線型不同）+ 100/7 輔助虛線 |
+| **P2–P5 Source Trend** | Claude / Codex / Grok / Ollama 各自一頁；最近 10 天剩餘曲線、實際時間軸、reset 標記、due/reset 理想斜率；提前 reset 時截斷理想線 |
 
 ## 功能
 
 | 項目 | 說明 |
 | --- | --- |
-| 版面 | 對齊 `ui/aiusage-wireframe.html` |
+| 版面 | 現行 P0–P5 以主 sketch 為準；`ui/aiusage-wireframe.html` 已同步頁面路由與 Error／Partial 狀態 |
 | 來源 | Claude / Codex / Grok / Ollama |
-| 刷新 | 資料 **15 分鐘**、自動翻頁 **5 分鐘**（P0–P7 一輪約 40 分鐘）、時鐘 **分鐘變才重畫**；P4–P7 只使用最新 10 天歷史點 |
+| 刷新 | 資料 **15 分鐘**、自動翻頁 **5 分鐘**（P0–P5 一輪約 30 分鐘）、reset 倒數／電量在**分鐘變時重畫**；P2–P5 只使用最新 10 天歷史點 |
 | Wi‑Fi | **間歇**：只在拉 `/data`（或配網）時連線，結束後 `WIFI_OFF`；底欄 `live`=連線中、`idle`=有資料但 radio 關 |
-| P3 語意 | 對齊使用報告「建議一天用」；% 皆剩餘；無 5h 窗顯示 `--` |
-| P4–P7 語意 | Y 軸為剩餘 %；理想線由每個 reset 到該週期 due/reset 計算；提前 reset 不強制拉到 0%；reset 後資料不足 6 小時／3 點時實測斜率顯示 `--` |
+| 手動更新 | 短按換頁後若 10 秒內沒有再按，額外開 Wi-Fi 拉取一次並短暫顯示 `UPD`；連續翻頁只在最後一次按鍵後觸發一次 |
+| P0 語意 | `DAY% = 週剩餘% ÷ 剩餘天`；% 皆為剩餘；無 5h 窗顯示 `--` |
+| P2–P5 語意 | Y 軸為剩餘 %；理想線由每個 reset 到該週期 due/reset 計算；提前 reset 不強制拉到 0%；reset 後資料不足 6 小時／3 點時實測斜率顯示 `--` |
 | 時鐘 | NTP（UTC+8） |
 | 電量 | GPIO4 ADC（有 18650 才顯示） |
 | WiFi | `secrets.h` 優先；否則 **WiFiManager**（會記住上次配網） |
@@ -55,16 +54,13 @@ BOOT 是板上靠近 USB 的 **BOOT** 側鍵（GPIO0），不是 PWR。
 
 ## 編譯燒錄
 
-```bash
-FQBN='esp32:esp32:esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,FlashSize=16M,PSRAM=opi'
-PORT='/dev/cu.usbmodem101'   # arduino-cli board list 確認
+從 repo 根目錄使用鎖定腳本；它會編譯、尋找 USB 埠、燒錄並檢查 Serial：
 
-arduino-cli compile --fqbn "$FQBN" --libraries "$HOME/Documents/Arduino/libraries" firmware/aiusage_home
-arduino-cli upload -p "$PORT" --fqbn "$FQBN" firmware/aiusage_home
-arduino-cli monitor -p "$PORT" -c baudrate=115200
+```bash
+.agents/skills/flash-firmware/scripts/flash.sh
 ```
 
-依賴：U8g2、ArduinoJson、WiFiManager。
+Agent 執行前須先讀 [`flash-firmware` skill](../../.agents/skills/flash-firmware/SKILL.md)。板級設定、依賴與人類手動 `arduino-cli` 備援見 [`docs/firmware-operations.md`](../../docs/firmware-operations.md)。
 
 ## 預期 Serial
 
@@ -76,7 +72,6 @@ poll ok: pts=96 C=56 X=88 G=42 O=70
 
 ## 預期畫面
 
-- 左上時間 + 日期
-- 右上 `AI USAGE` / `WEEK REMAIN`
-- 2×2：CLAUDE / CODEX / GROK / OLLAMA 大數字 % + bar
-- 底欄：`live` + ingest 時間 + 電量
+- P0 標題 `ALL DETAIL`，2×2 顯示 CLAUDE / CODEX / GROK / OLLAMA 的剩餘數值與 reset 資訊
+- P1 顯示四來源最近 10 天趨勢；P2–P5 為各來源圖表
+- 底欄顯示連線狀態、ingest 時間與電量

@@ -31,6 +31,11 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --port)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "flash.sh: --port requires a path" >&2
+        usage >&2
+        exit 1
+      fi
       PORT="${2:-}"
       shift 2
       ;;

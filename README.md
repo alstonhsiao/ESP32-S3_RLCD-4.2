@@ -4,17 +4,17 @@
 
 硬體像「可快速刷新的電子紙」：無背光、靠環境光可讀、單色 300×400、板載 Wi-Fi/BLE、雙麥克風、喇叭、溫濕度、RTC 與 18650 電池。
 
-**進度與 agent 約定：** [`AGENTS.md`](AGENTS.md)（先看快速地圖；進度與待辦見 [`docs/power-and-progress.md`](docs/power-and-progress.md)）
+**進度與 agent 約定：** [`AGENTS.md`](AGENTS.md)（先看快速地圖；進度與待辦見 [`docs/power-and-progress.md`](docs/power-and-progress.md)，清理候選見 [`docs/cleanup-plan.md`](docs/cleanup-plan.md)）
 
 ---
 
-## 現況（2026-08-16）
+## 現況（2026-08-23）
 
 | 項目 | 狀態 |
 | --- | --- |
 | 框架 | **Arduino + U8g2**（已鎖定） |
 | Hello 螢幕 | ✅ `firmware/hello_rlcd` |
-| AI 用量儀表 | ✅ `firmware/aiusage_home` — P0–P7 全部上板驗證 |
+| AI 用量儀表 | `firmware/aiusage_home` — 現行程式為 P0–P5；2026-08-22 合併首頁後待補實機驗證 |
 | Web 用量分析 | ✅ `web/aiusage-analysis.html` — 四來源分圖、reset 與斜率判定 |
 | 資料源 | `https://aiusage-web.zeabur.app/data`（雲端 SQLite + persistent volume；週剩餘 % = 100 − used） |
 | 資料可靠性 | ✅ 韌體在 `/data` 返回 0 points 時自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試 |
@@ -24,16 +24,14 @@
 ### 燒錄
 
 ```bash
-FQBN='esp32:esp32:esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,FlashSize=16M,PSRAM=opi'
-PORT='/dev/cu.usbmodem11401'   # arduino-cli board list
-
-arduino-cli compile --fqbn "$FQBN" --libraries "$HOME/Documents/Arduino/libraries" firmware/aiusage_home
-arduino-cli upload -p "$PORT" --fqbn "$FQBN" firmware/aiusage_home
-arduino-cli monitor -p "$PORT" -c baudrate=115200
+.agents/skills/flash-firmware/scripts/flash.sh
 ```
+
+腳本會以鎖定的 FQBN 編譯、尋找 USB 埠、燒錄並檢查 Serial；agent 執行前須先讀 [`flash-firmware` skill](.agents/skills/flash-firmware/SKILL.md)。板級設定與人類手動 `arduino-cli` 備援見 [`docs/firmware-operations.md`](docs/firmware-operations.md)。
 
 WiFi：首次用 AP **`AIUsage-RLCD`** 配網（僅 2.4 GHz；WiFiManager 記在 NVS），或複製 `secrets.h.example` → `secrets.h`（已 gitignore）。
 BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
+
 ---
 
 ## 硬體速覽
@@ -89,14 +87,15 @@ BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
 - [x] 框架 Arduino + U8g2
 - [x] aiusage wireframe（`ui/`）
 - [x] Hello RLCD
-- [x] aiusage P0–P7 + BOOT 翻頁（P4–P7 為四個來源的最近 10 天圖表）
+- [x] aiusage 基礎頁面、四來源最近 10 天圖表與 BOOT 翻頁
 - [x] 雲端資料源改用 SQLite + persistent volume（2026-08-16）
 - [x] 韌體自動恢復：`/data` 空資料時自動觸發上游刷新（2026-08-16）
 
 ### Phase 1 — 打磨與感測（下一步）
 
 - [ ] 電池長測（完整放電週期）
-- [ ] UX：P1 間距、P2 多線可讀性、反顯（`INVERT_DISPLAY`）
+- [ ] 實機驗證現行 P0–P5：P0 Combined、P1 多線可讀性、P2–P5 單來源圖表
+- [ ] UX：P0 Combined 間距與資訊層次、軟體反顯（`INVERT_DISPLAY`）
 - [ ] 離線/stale 與 HTTPS 穩定度（大 JSON ~60KB）
 - [ ] SHTC3 室溫濕度
 - [ ] KEY 第二操作
@@ -113,7 +112,7 @@ BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
 
 ```text
 .
-├── AGENTS.md                 # agent 約定、技術棧、進度與待辦
+├── AGENTS.md                 # agent Hub、路由與高風險規則
 ├── README.md
 ├── .gitignore                # 含 firmware/**/secrets.h
 ├── docs/specs/               # 硬體 SPEC + PDF
@@ -168,5 +167,3 @@ void setup() {
 3. 喇叭需 **GPIO46 HIGH**  
 4. PSRAM：**octal 80 MHz**  
 5. 勿提交 `secrets.h`  
-
-Agent 約定與待辦：[`AGENTS.md`](AGENTS.md) 的快速地圖與 [`docs/power-and-progress.md`](docs/power-and-progress.md)。

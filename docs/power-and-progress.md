@@ -26,8 +26,8 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 | 領域 | 現況 |
 | --- | --- |
 | 基建 | SPEC、Arduino + U8g2、Hello RLCD 與 aiusage 多頁已完成 |
-| aiusage | P0–P3 基礎頁面已完成；P4–P7 四源最近 10 天圖表已加入，待實機確認 |
-| UX | P1 間距、P2 多線可讀性、軟體反顯仍待打磨 |
+| aiusage | 現行程式為 P0 Combined、P1 Trend、P2–P5 四源最近 10 天圖表；2026-08-22 合併首頁後待實機確認 |
+| UX | HTML wireframe 已同步現行 P0–P5；P0 Combined 間距、P1 多線可讀性與軟體反顯仍待實機確認 |
 | 穩定度 | HTTPS／較大 JSON、離線 stale、重試與精簡 API 待驗證 |
 | 感測與互動 | SHTC3、KEY 第二操作、天氣或本機 proxy 待規劃 |
 | 工程 | `aiusage_home` 拆分 ui／net／data、GitHub remote 檢查可選 |
@@ -42,6 +42,8 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 | 2026-08-06 | 完成第一段電池短測，長測列為待辦；整理 handoff 內容回本 repo |
 | 2026-08-07 | 完成追加電池觀測；仍以完整放電週期為準 |
 | 2026-08-11 | Web 四源圖表移植至 RLCD P4–P7：各頁顯示最近 10 天剩餘曲線、reset/due 與 reset-aware 理想斜率；已通過本機編譯，待燒錄驗證 |
+| 2026-08-22 | 移除舊 P0 Home、P1 Detail、P3 Pace，將合併頁升為 P0；現行頁面重編為 P0–P5，文件與 wireframe 同步列入清理 |
+| 2026-08-23 | 完成專案清理：同步 P0–P5 wireframe、移除退役 panels／死碼／重複燒錄說明，並合併 UPD 與頁面 full-buffer 傳送；本機編譯與桌面／手機視覺檢查通過，待實機驗證 |
 
 ## 刻意未做
 

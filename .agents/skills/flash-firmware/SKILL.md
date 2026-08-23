@@ -52,8 +52,8 @@ description: >
 
 | code | 意思 |
 | --- | --- |
-| 0 | 燒進去，且 Serial 看到開機字串 |
-| 1 | 編譯失敗 |
+| 0 | 上傳成功；預設也已看到 Serial 開機字串，使用 `--no-verify` 時則未驗證 Serial |
+| 1 | 參數、環境或編譯失敗（例如未知參數、缺 sketch、缺 `arduino-cli`） |
 | 2 | 找不到 USB 埠 |
 | 3 | 上傳失敗 |
 | 4 | 上傳成功但 Serial 沒看到開機字串 |

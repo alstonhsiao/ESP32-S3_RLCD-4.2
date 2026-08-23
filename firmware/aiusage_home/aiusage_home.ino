@@ -26,7 +26,13 @@
 #include <SPI.h>
 #include <time.h>
 #include <WiFiManager.h>
+
+#if __has_include("secrets.h")
 #include "secrets.h"
+#else
+#define WIFI_SSID ""
+#define WIFI_PASS ""
+#endif
 
 // ---- pins ----
 #define RLCD_SCK  11
@@ -221,14 +227,6 @@ static void fmtReset(long resetUnix, char* out, size_t n) {
   if (s < 3600) snprintf(out, n, "%ldm", s / 60);
   else if (s < 86400) snprintf(out, n, "%ldh %ldm", s / 3600, (s % 3600) / 60);
   else snprintf(out, n, "%ldd %ldh", s / 86400, (s % 86400) / 3600);
-}
-
-static void fmtResetLine(long resetUnix, char* out, size_t n) {
-  char body[20];
-  fmtReset(resetUnix, body, sizeof(body));
-  if (strcmp(body, "--") == 0) snprintf(out, n, "RESET --");
-  else if (strcmp(body, "now") == 0) snprintf(out, n, "RESET now");
-  else snprintf(out, n, "RESET %s", body);
 }
 
 // Days until reset (fractional). -1 if unknown.
@@ -543,7 +541,7 @@ static bool pollData() {
 }
 
 // ---- drawing primitives ----
-static void drawStatusScreen(const char* title, const char* line2, const char* line3) {
+static void drawStatusContent(const char* title, const char* line2, const char* line3) {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
   u8g2.setFont(u8g2_font_helvB12_tf);
@@ -551,6 +549,10 @@ static void drawStatusScreen(const char* title, const char* line2, const char* l
   u8g2.setFont(u8g2_font_6x13_tf);
   if (line2) strCenter(W / 2, H / 2 + 6, line2);
   if (line3) strCenter(W / 2, H / 2 + 26, line3);
+}
+
+static void drawStatusScreen(const char* title, const char* line2, const char* line3) {
+  drawStatusContent(title, line2, line3);
   u8g2.sendBuffer();
 }
 
@@ -582,7 +584,7 @@ static void drawBottomBar(const char* extraHint) {
   drawBatteryRight(W - 12, 267, gBat);
 }
 
-static void drawSourceCell(int x, int y, const SourceUi& s, bool withReset) {
+static void drawSourceCell(int x, int y, const SourceUi& s) {
   // Name + origin on one line: "CLAUDE oauth"
   u8g2.setFont(u8g2_font_helvB10_tf);
   u8g2.drawStr(x, y, s.name);
@@ -609,13 +611,6 @@ static void drawSourceCell(int x, int y, const SourceUi& s, bool withReset) {
   u8g2.drawStr(x + nw + 2, y + 28, "%");
 
   drawBar(x, y + 38, 172, 12, s.remainWeek / 100.0f);
-
-  if (withReset) {
-    char rb[24];
-    fmtResetLine(s.resetWeek, rb, sizeof(rb));
-    u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.drawStr(x, y + 62, rb);
-  }
 }
 
 // ---- pages ----
@@ -735,10 +730,9 @@ static void renderTrend() {
   if (gSnap.trendEndLbl[0]) strRight(left + cw, top + ch + 14, gSnap.trendEndLbl);
 
   drawBottomBar(nullptr);  // show ingest / status (same size as live)
-  u8g2.sendBuffer();
 }
 
-// ---- per-source 10d chart pages (P4-P7) ----
+// ---- per-source 10d chart pages (P2-P5) ----
 static int firstTrendValid(int srcIdx) {
   for (int i = 0; i < gSnap.trendN; i++) {
     if (gSnap.trend[srcIdx][i] >= 0 && gSnap.trendTs[i] > 100000) return i;
@@ -915,7 +909,7 @@ static void renderSourceTrend(int srcIdx) {
   int first = firstTrendValid(srcIdx);
   int last = lastTrendValid(srcIdx);
   if (first < 0 || last < 0) {
-    drawStatusScreen(gSnap.src[srcIdx].name, "NO WEEK DATA", "poll again");
+    drawStatusContent(gSnap.src[srcIdx].name, "NO WEEK DATA", "poll again");
     return;
   }
 
@@ -1023,13 +1017,10 @@ static void renderSourceTrend(int srcIdx) {
   u8g2.drawStr(left, top + ch + 14, startLbl);
   strRight(left + cw, top + ch + 14, endLbl);
   drawBottomBar("R=reset D=due");
-  u8g2.sendBuffer();
 }
 
-// P0 (trial) — Detail + Pace merged into a 2x2 grid (same
-// quadrant positions and week-remain bar as drawSourceCell), with
-// 5h/day%/reset/pace packed under each source's bar. Calls the shared
-// drawSourceCell() used by renderHome but does not modify it.
+// P0 — Detail + Pace merged into a 2x2 grid, with 5h/day%/reset/pace
+// packed under each source's week-remain bar.
 static void renderCombined() {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
@@ -1050,7 +1041,7 @@ static void renderCombined() {
     if (day[i] > best) { best = day[i]; bestIdx = i; }
   }
 
-  // same 2x2 layout as renderHome(): cols at x=12/212, split at x=200
+  // 2x2 layout: cols at x=12/212, split at x=200
   static const int cx[4] = {12, 212, 12, 212};
   static const int cy[4] = {32, 32, 146, 146};
   static const int crx[4] = {190, 388, 190, 388};  // right edge of each cell, for pace label
@@ -1063,8 +1054,8 @@ static void renderCombined() {
     const SourceUi& s = gSnap.src[i];
     int x = cx[i], ty = cy[i];
 
-    // name + big % + bar, identical to P0's cell (no reset line from here)
-    drawSourceCell(x, ty + 16, s, false);
+    // name + big % + bar; reset details are drawn below the shared cell
+    drawSourceCell(x, ty + 16, s);
 
     // pace (OK/SLOW/FAST) on the name row, right-aligned — clear of the
     // name/origin text on the left and the metric lines below
@@ -1089,26 +1080,25 @@ static void renderCombined() {
   }
 
   drawBottomBar(nullptr);  // show ingest time / status, same as P0
-  u8g2.sendBuffer();
 }
 
 static void render() {
   if ((gLink == LinkState::WifiSetup || gLink == LinkState::Connecting || gLink == LinkState::Booting)
       && !gSnap.valid) {
-    drawStatusScreen(
+    drawStatusContent(
       gLink == LinkState::WifiSetup ? "WIFI SETUP" :
       gLink == LinkState::Connecting ? "CONNECTING" : "BOOTING",
       gLink == LinkState::WifiSetup ? "AP: AIUsage-RLCD" : "aiusage-web",
       gLink == LinkState::WifiSetup ? "open 192.168.4.1" : DATA_URL);
-    return;
+  } else {
+    if (gPage == 0) renderCombined();
+    else if (gPage == 1) renderTrend();
+    else if (gPage < CHART_PAGE_BASE + 4) renderSourceTrend(gPage - CHART_PAGE_BASE);
+    else renderCombined();
   }
 
-  if (gPage == 0) renderCombined();
-  else if (gPage == 1) renderTrend();
-  else if (gPage < CHART_PAGE_BASE + 4) renderSourceTrend(gPage - CHART_PAGE_BASE);
-  else renderCombined();
-
   drawUpdateBadge();
+  u8g2.sendBuffer();
 }
 
 // Small "UPD" badge in top-right corner to signal fresh data was fetched.
@@ -1122,7 +1112,6 @@ static void drawUpdateBadge() {
   u8g2.setFont(u8g2_font_6x13_tf);
   u8g2.drawStr(W - 26, 10, "UPD");
   u8g2.setDrawColor(1);
-  u8g2.sendBuffer();
 }
 
 // ---- WiFi (connect only for poll / portal; radio OFF between) ----

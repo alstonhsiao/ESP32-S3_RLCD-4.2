@@ -26,17 +26,15 @@
 
 | 頁面 | 目的 | 主要輸入／輸出 | 注意事項 |
 | --- | --- | --- | --- |
-| P0 Home | 一眼掃讀四個來源的週剩餘 | 時鐘、四源剩餘%、bar、連線與電池狀態 | bar 表示剩餘比例，勿誤畫成已用比例 |
-| P1 Detail | 比較週、5h 與 reset | 四源表格、低剩餘反白、reset 文案 | 300 高度可能擁擠，改動需實機確認 |
-| P2 Trend | 看近期週剩餘趨勢 | 有限歷史點、四種 1bpp 線型、輔助線 | 多線重疊時優先可讀性，可評估單源切換 |
-| P3 Pace | 顯示建議一天使用額度 | 週剩餘、剩餘天數、週／5h 結束時間、節奏標籤 | 日額 = 週剩餘% ÷ 剩餘天；最高列可反白 |
-| P4–P7 Source Trend | 分別看 Claude／Codex／Grok／Ollama 最近 10 天週剩餘 | 單一來源剩餘曲線、reset、due/reset 理想線、斜率摘要 | 實際資料限制最近 10 天；提前 reset 時理想線在事件點截斷，reset 後重新由 100% 開始 |
+| P0 Combined | 一眼比較四個來源的週、5h、每日建議額度與 reset | 四源週剩餘%、bar、5h、day%、reset、節奏、連線與電池狀態 | bar 表示剩餘比例；日額 = 週剩餘% ÷ 剩餘天；現行合併版待實機確認間距與層次 |
+| P1 Trend | 看近期週剩餘趨勢 | 有限歷史點、四種 1bpp 線型、輔助線 | 多線重疊時優先可讀性，並以 P2–P5 單源頁補足 |
+| P2–P5 Source Trend | 分別看 Claude／Codex／Grok／Ollama 最近 10 天週剩餘 | 單一來源剩餘曲線、reset、due/reset 理想線、斜率摘要 | 實際資料限制最近 10 天；提前 reset 時理想線在事件點截斷，reset 後重新由 100% 開始 |
 | Error／Partial | 讓失敗狀態仍可讀 | 無資料、部分來源、重試與連線狀態 | 不得以白屏掩蓋 HTTP、Wi-Fi 或資料問題 |
 
 ## Wireframe 與參考實作
 
-- 人類預覽入口：`../ui/README.md`；HTML wireframe：`../ui/aiusage-wireframe.html`。
-- `../ui/` 的版面應與 `../firmware/aiusage_home/aiusage_home.ino` 的 P0–P7 對照，不要只改其中一邊。
+- 人類預覽入口：`../ui/README.md`；HTML wireframe：`../ui/aiusage-wireframe.html`。該 wireframe 已對齊現行 P0 Combined／P1 Trend／P2–P5，並保留 Error／Partial 狀態供失敗路徑驗收。
+- `../ui/` 的版面應與 `../firmware/aiusage_home/aiusage_home.ino` 的 P0–P5 對照，不要只改其中一邊。
 - ClaudeSlate 是同一塊硬體的參考專案，可借鏡 400×300 單色資訊設計、進度條、折線、BOOT 翻頁、captive portal、離線狀態與軟體反顯；需求不符時以本 repo 規則為準。
 
 ## 刷新與功耗邊界
