@@ -14,7 +14,7 @@
 | --- | --- |
 | 框架 | **Arduino + U8g2**（已鎖定） |
 | Hello 螢幕 | ✅ `firmware/hello_rlcd` |
-| AI 用量儀表 | `firmware/aiusage_home` — 現行程式為 P0–P5；2026-08-22 合併首頁後待補實機驗證 |
+| AI 用量儀表 | `firmware/aiusage_home` — 現行程式為 P0–P5；2026-08-25 趨勢緩衝擴為完整 10 天／最多 720 點（20 分鐘格降取樣），P2–P5 理想線可從真實 reset 錨點滿高繪出，已燒錄並通過 Serial 驗證；P0–P5 視覺驗收仍待實機確認 |
 | Web 用量分析 | ✅ `web/aiusage-analysis.html` — 四來源分圖、reset 與斜率判定 |
 | 資料源 | `https://aiusage-web.zeabur.app/data`（雲端 SQLite + persistent volume；週剩餘 % = 100 − used） |
 | 資料可靠性 | ✅ 韌體在 `/data` 返回 0 points 時自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試 |
@@ -90,6 +90,7 @@ BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
 - [x] aiusage 基礎頁面、四來源最近 10 天圖表與 BOOT 翻頁
 - [x] 雲端資料源改用 SQLite + persistent volume（2026-08-16）
 - [x] 韌體自動恢復：`/data` 空資料時自動觸發上游刷新（2026-08-16）
+- [x] 趨勢視窗擴為完整 10 天（最多 720 點、20 分鐘格降取樣），P2–P5 理想線取得真實 reset 錨點，修復各頁虛線陡度不一（2026-08-25）
 
 ### Phase 1 — 打磨與感測（下一步）
 

@@ -47,10 +47,16 @@
 #define H 300
 #define PAGE_COUNT 6
 #define CHART_PAGE_BASE 2
-#define TREND_N 128
+// Trend buffer: 20-min grid over the 10d window (720 slots). parsePayload
+// downsamples denser cloud points by keeping the last point of each slot, so
+// resets older than ~2 days stay visible as R anchors for the ideal line.
+#define TREND_N 720
+#define TREND_GRID_SEC (20L * 60L)
 #define TREND_WINDOW_SEC (10L * 86400L)
 #define MIN_SLOPE_WINDOW_SEC (6L * 3600L)
 #define SLOPE_TOLERANCE 0.10f
+// Reset markers are sparse (a handful per week); no need to scale with TREND_N.
+#define TREND_EVENT_MAX 32
 
 // Data source: cloud SQLite (persistent volume on Zeabur), fed by local SQLite upsert.
 // GET /data reads from cloud DB; POST /trigger kicks KM to query AI quota + sync.
@@ -129,7 +135,7 @@ struct TrendResetEvent {
   bool confirmed;
 };
 
-static TrendResetEvent gTrendEvents[TREND_N];
+static TrendResetEvent gTrendEvents[TREND_EVENT_MAX];
 static int gTrendEventN = 0;
 
 static void noteDrawnMinute() {
@@ -418,20 +424,30 @@ static bool parsePayload(const String& payload) {
     fillSourceFromJson(gSnap.src[i], s);
   }
 
-  // trend window: recent 10 days, capped to TREND_N points for RLCD memory.
+  // trend window: recent 10 days on a TREND_GRID_SEC grid; cloud points denser
+  // than the grid are downsampled to the last point of each slot, keeping reset
+  // anchors visible even when daily sampling density varies a lot.
   int start = 0;
   long lastEpoch = pointEpoch(points[nPts - 1].as<JsonObject>());
   if (lastEpoch > 100000) {
     long cutoff = lastEpoch - TREND_WINDOW_SEC;
     while (start < nPts && pointEpoch(points[start].as<JsonObject>()) < cutoff) start++;
   }
-  if (nPts - start > TREND_N) start = nPts - TREND_N;
-  gSnap.trendN = nPts - start;
-  for (int ti = 0; ti < gSnap.trendN; ti++) {
-    JsonObject pt = points[start + ti].as<JsonObject>();
-    gSnap.trendTs[ti] = pointEpoch(pt);
+
+  int ti = 0;
+  for (int pi = start; pi < nPts; pi++) {
+    JsonObject pt = points[pi].as<JsonObject>();
+    long ep = pointEpoch(pt);
+    if (ep <= 100000) continue;
+    long slot = ep / TREND_GRID_SEC;
+    int nxt = pi + 1;
+    while (nxt < nPts && pointEpoch(points[nxt].as<JsonObject>()) <= 100000) nxt++;
+    if (nxt < nPts && pointEpoch(points[nxt].as<JsonObject>()) / TREND_GRID_SEC == slot)
+      continue;  // superseded later within the same grid slot
+    if (ti >= TREND_N) break;
+    gSnap.trendTs[ti] = ep;
     if (ti == 0) labelFromPoint(pt, gSnap.trendStartLbl, sizeof(gSnap.trendStartLbl));
-    if (ti == gSnap.trendN - 1) labelFromPoint(pt, gSnap.trendEndLbl, sizeof(gSnap.trendEndLbl));
+    labelFromPoint(pt, gSnap.trendEndLbl, sizeof(gSnap.trendEndLbl));
     JsonObject srcs = pt["sources"].as<JsonObject>();
     for (int i = 0; i < 4; i++) {
       if (srcs.isNull()) { gSnap.trend[i][ti] = -1; continue; }
@@ -444,7 +460,9 @@ static bool parsePayload(const String& payload) {
       gSnap.trend[i][ti] = (int8_t)(rem + 0.5f);
       gSnap.trendResetWeek[i][ti] = s["resets_weekly_at"].isNull() ? 0 : s["resets_weekly_at"].as<long>();
     }
+    ti++;
   }
+  gSnap.trendN = ti;
 
   gSnap.valid = true;
   return true;
@@ -659,24 +677,23 @@ static void drawTrendSeries(int left, int top, int cw, int ch, int srcIdx, int s
   int n = gSnap.trendN;
   if (n < 2) return;
 
-  int xs[TREND_N], ys[TREND_N];
-  int m = 0;
+  // stream segment by segment; TREND_N-sized coordinate buffers would be too
+  // much stack now that the window holds hundreds of points
+  int px = 0, py = 0;
+  bool pen = false;
   for (int i = 0; i < n; i++) {
     int8_t v = gSnap.trend[srcIdx][i];
     if (v < 0) {
-      for (int k = 0; k + 1 < m; k++)
-        plotSegment(xs[k], ys[k], xs[k + 1], ys[k + 1], style);
-      m = 0;
+      pen = false;
       continue;
     }
-    int x = left + (n == 1 ? 0 : (int)((long)i * (cw - 1) / (n - 1)));
+    int x = left + (int)((long)i * (cw - 1) / (n - 1));
     int y = top + ch - 1 - (int)((long)v * (ch - 1) / 100);
-    xs[m] = x;
-    ys[m] = y;
-    m++;
+    if (pen) plotSegment(px, py, x, y, style);
+    px = x;
+    py = y;
+    pen = true;
   }
-  for (int k = 0; k + 1 < m; k++)
-    plotSegment(xs[k], ys[k], xs[k + 1], ys[k + 1], style);
 }
 
 static void renderTrend() {
@@ -784,7 +801,7 @@ static int collectTrendResetEvents(int srcIdx) {
     int currentRemain = gSnap.trend[srcIdx][i];
     if (currentRemain < 0 || gSnap.trendTs[i] <= 100000) continue;
 
-    if (previous >= 0 && gTrendEventN < TREND_N) {
+    if (previous >= 0 && gTrendEventN < TREND_EVENT_MAX) {
       int previousRemain = gSnap.trend[srcIdx][previous];
       long previousTs = gSnap.trendTs[previous];
       long currentTs = gSnap.trendTs[i];

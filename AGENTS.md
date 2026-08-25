@@ -125,6 +125,10 @@ Type-C 或 18650 插拔時勿以螢幕受力；文件不得鼓勵暴力拆裝或
 
 - **螢幕反覆沒資料**（同類發生多次 → 升格）：舊版雲端 `usage-web` 用檔案系統 JSON 快取（`history.json`），Zeabur 重新部署時清空 → `GET /data` 返回 `{"points":[]}` → 韌體直接放棄顯示，且所有失敗路徑無 Serial 輸出，無法診斷。修復：(1) 雲端改用 SQLite + persistent volume（keyboardmaestro 專案 `autousage/usage-web/db.js`）；(2) 韌體在 0 points 時自動 `POST /trigger` 觸發 KM 查詢 + sync 再重試；(3) 所有失敗路徑加 Serial 診斷。反例：不要假設雲端 `/data` 永遠有資料；韌體必須能處理空回應並自動恢復。
 
+### 已解決事項（2026-08-25）
+
+- **P2–P5 理想虛線各頁陡度不一**（單次設計缺陷，未升格）：`TREND_N=128` 在當時約 23 分鐘一點的取樣下只涵蓋最近約 2 天，視窗外的週期 reset 使 `drawTrendIdeal` 退化成「自窗起點剩餘值清零到 due」的半高平緩線；reset 恰在窗內的來源卻畫滿高 100%→due 線，兩種語義在同一組頁面混用且無標示（例：GROK 頁虛線特別平）。修復：`TREND_N` 擴為 720（10 天 × 20 分鐘格），`parsePayload` 對較密雲端點逐格保留最後一點做降取樣；reset 事件陣列另立 `TREND_EVENT_MAX=32` 不隨 `TREND_N` 放大；P1 多線繪製改串流逐段畫，避免 720 點座標陣列吃堆疊。實機 Serial 驗證 `poll ok … trend=270`，四源皆取得真實 R 錨點。反例：不要讓趨勢緩衝實際涵蓋遠小於標示（LAST 10D）的時間窗；依賴歷史錨點的功能會靜默退化。
+
 ### 路徑檢查與瘦身協議
 
 - 路徑檢查：例行維護時，逐一驗證 Hub 與各 `INDEX.md` 中提到的檔案路徑是否存在；失效路徑立即修正，無法確定則標 `NEED_REVIEW`。
