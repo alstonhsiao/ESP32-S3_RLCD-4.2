@@ -14,8 +14,8 @@
 | --- | --- |
 | 框架 | **Arduino + U8g2**（已鎖定） |
 | Hello 螢幕 | ✅ `firmware/hello_rlcd` |
-| AI 用量儀表 | `firmware/aiusage_home` — 現行程式為 P0–P5；2026-08-25 趨勢緩衝擴為完整 10 天／最多 720 點（20 分鐘格降取樣），P2–P5 理想線可從真實 reset 錨點滿高繪出，已燒錄並通過 Serial 驗證；P0–P5 視覺驗收仍待實機確認 |
-| Web 用量分析 | ✅ `web/aiusage-analysis.html` — 四來源分圖、reset 與斜率判定 |
+| AI 用量儀表 | `firmware/aiusage_home` — 現行程式為 P0–P6（五來源）；2026-08-26 從 4 源擴充為 5 源（新增 `codex:Alston`，原 `codex` 改為 `codex:chihyi`），P0 改為五列橫排；P1 趨勢五線；P2–P6 各源圖表；趨勢緩衝擴為完整 10 天／最多 720 點（20 分鐘格降取樣），理想線可從真實 reset 錨點滿高繪出 |
+| Web 用量分析 | ✅ `web/aiusage-analysis.html` — 五來源分圖、reset 與斜率判定 |
 | 資料源 | `https://aiusage-web.zeabur.app/data`（雲端 SQLite + persistent volume；週剩餘 % = 100 − used） |
 | 資料可靠性 | ✅ 韌體在 `/data` 返回 0 points 時自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試 |
 | 換頁 | **短按 BOOT**；長按 3s 配網（AP `AIUsage-RLCD`，僅 2.4 GHz） |
@@ -87,16 +87,17 @@ BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
 - [x] 框架 Arduino + U8g2
 - [x] aiusage wireframe（`ui/`）
 - [x] Hello RLCD
-- [x] aiusage 基礎頁面、四來源最近 10 天圖表與 BOOT 翻頁
+- [x] aiusage 基礎頁面、五來源最近 10 天圖表與 BOOT 翻頁
 - [x] 雲端資料源改用 SQLite + persistent volume（2026-08-16）
 - [x] 韌體自動恢復：`/data` 空資料時自動觸發上游刷新（2026-08-16）
-- [x] 趨勢視窗擴為完整 10 天（最多 720 點、20 分鐘格降取樣），P2–P5 理想線取得真實 reset 錨點，修復各頁虛線陡度不一（2026-08-25）
+- [x] 趨勢視窗擴為完整 10 天（最多 720 點、20 分鐘格降取樣），P2–P6 理想線取得真實 reset 錨點，修復各頁虛線陡度不一（2026-08-25）
+- [x] 五來源擴充：新增 `codex:Alston`，原 `codex` 改為 `codex:chihyi`；P0 改五列橫排、P1 五線、P2–P6 各源圖表（2026-08-26）
 
 ### Phase 1 — 打磨與感測（下一步）
 
 - [ ] 電池長測（完整放電週期）
-- [ ] 實機驗證現行 P0–P5：P0 Combined、P1 多線可讀性、P2–P5 單來源圖表
-- [ ] UX：P0 Combined 間距與資訊層次、軟體反顯（`INVERT_DISPLAY`）
+- [ ] 實機驗證現行 P0–P6：P0 Combined、P1 多線可讀性、P2–P6 單來源圖表
+- [ ] UX：P0 Combined 五列橫排間距與資訊層次、軟體反顯（`INVERT_DISPLAY`）
 - [ ] 離線/stale 與 HTTPS 穩定度（大 JSON ~60KB）
 - [ ] SHTC3 室溫濕度
 - [ ] KEY 第二操作

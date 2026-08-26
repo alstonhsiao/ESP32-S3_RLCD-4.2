@@ -31,10 +31,10 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 
 ## aiusage_home 目前行為
 
-- 從 aiusage-web 的 `/data` 取得衍生 JSON，畫 P0 Combined、P1 Trend，以及 P2–P5 四個來源分頁圖表。雲端 `/data` 背後是 Zeabur persistent volume 上的 SQLite（2026-08-16 起），由本機 `usage-history.db` upsert 累積，重佈署不再清空。
+- 從 aiusage-web 的 `/data` 取得衍生 JSON，畫 P0 Combined、P1 Trend，以及 P2–P6 五個來源分頁圖表。雲端 `/data` 背後是 Zeabur persistent volume 上的 SQLite（2026-08-16 起），由本機 `usage-history.db` upsert 累積，重佈署不再清空。資料來源為 `claude`、`codex:chihyi`、`codex:Alston`、`grok`、`ollama`（2026-08-26 起從 4 源擴充為 5 源）。
 - 短按 BOOT（GPIO0）循環換頁；長按約 3 秒進入 WiFiManager AP `AIUsage-RLCD`。
 - 短按換頁會重設延遲更新計時；停止操作約 10 秒後額外開啟 Wi-Fi 拉取一次新資料並顯示 `UPD`。連續翻頁只在最後一次按鍵後觸發一次，但仍比單純等待 15 分鐘輪詢耗電。
-- 資料以較長間隔輪詢，畫面通常在分鐘變更時重畫，頁面也會自動輪替；目前 P0–P5 每 5 分鐘換頁，完整一輪約 30 分鐘，實際常數以 `aiusage_home.ino` 為準。
+- 資料以較長間隔輪詢，畫面通常在分鐘變更時重畫，頁面也會自動輪替；目前 P0–P6 每 5 分鐘換頁，完整一輪約 35 分鐘，實際常數以 `aiusage_home.ino` 為準。
 - 拉資料時才開 Wi-Fi，完成後關閉 radio；這是目前 always-on 電池策略的一部分。
 - 沒有資料、部分來源失敗或離線時仍要顯示狀態，不得白屏。韌體在 `/data` 返回 0 points 時會自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試一次。
 
@@ -42,7 +42,7 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 
 | 操作 | 行為 |
 | --- | --- |
-| 短按 BOOT | P0 Combined → P1 Trend → P2–P5 四個來源圖表循環；停止操作約 10 秒後拉取新資料 |
+| 短按 BOOT | P0 Combined → P1 Trend → P2–P6 五個來源圖表循環；停止操作約 10 秒後拉取新資料 |
 | 長按 BOOT 約 3 秒 | 顯示 AP 資訊，手機連 `AIUsage-RLCD`，開 `192.168.4.1` 配網 |
 | Wi-Fi | 只支援 2.4 GHz；WiFiManager 會記住上次配網 |
 | 寫死 Wi-Fi | 由 `secrets.h.example` 複製 `secrets.h`；檔案已 gitignore，勿提交 |
@@ -53,7 +53,7 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 1. 先讀本檔、`../AGENTS.md` 的高風險規則與 `../firmware/INDEX.md`。
 2. 插 USB 後執行 `arduino-cli board list`，確認實際 PORT。
 3. 若板上不是 aiusage 畫面，重新編譯並燒錄 `../firmware/aiusage_home`。
-4. 短按 BOOT 確認 P0 到 P5 都可切換，再決定 UX、感測或穩定度工作。
+4. 短按 BOOT 確認 P0 到 P6 都可切換，再決定 UX、感測或穩定度工作。
 
 插拔 Type-C 或 18650 時勿以螢幕受力；不要用超壓供電或暴力拆裝作為復原手段。
 

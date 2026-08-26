@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AI Usage — RLCD P0–P5 Wireframe</title>
+  <title>AI Usage — RLCD P0–P6 Wireframe</title>
   <style>
     :root {
       --ink: #111;
@@ -129,7 +129,7 @@
 </head>
 <body>
   <header>
-    <h1>AI Usage — RLCD P0–P5 Wireframe</h1>
+    <h1>AI Usage — RLCD P0–P6 Wireframe</h1>
     <p class="sub">
       對齊現行 <code>aiusage_home.ino</code>：橫向 <code>U8G2_R1</code>、400×300、單色 1bpp。
       所有百分比皆為剩餘額度；此稿不連線、不模擬灰階，也不取代實機驗證。
@@ -141,9 +141,10 @@
     <button type="button" data-view="p0">P0 Combined</button>
     <button type="button" data-view="p1">P1 Trend</button>
     <button type="button" data-view="p2">P2 Claude</button>
-    <button type="button" data-view="p3">P3 Codex</button>
-    <button type="button" data-view="p4">P4 Grok</button>
-    <button type="button" data-view="p5">P5 Ollama</button>
+    <button type="button" data-view="p3">P3 Chihyi</button>
+    <button type="button" data-view="p4">P4 Alston</button>
+    <button type="button" data-view="p5">P5 Grok</button>
+    <button type="button" data-view="p6">P6 Ollama</button>
     <button type="button" data-view="states">Error / Partial</button>
     <span class="hint">BOOT 短按立即翻頁；停止操作 10 秒後更新；長按 3 秒配網</span>
   </nav>
@@ -151,16 +152,29 @@
   <main class="board" id="board">
     <section class="panel" data-page="p0">
       <h2>P0 · Combined</h2>
-      <p class="meta">四來源 2×2 總覽：週剩餘、5h、每日建議額度、reset 與節奏。版面依現行 <code>renderCombined()</code>。</p>
-      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P0 / 5</span></div><div class="screen-shell">
+      <p class="meta">五來源橫列總覽：每列一源，名稱+origin 在上，週剩餘大字+bar+5h/day/week-reset 在下，pace 右對齊。版面依現行 <code>renderCombined()</code>。</p>
+      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P0 / 7</span></div><div class="screen-shell">
         <div class="screen" aria-label="P0 Combined wireframe">
           <div class="t s12" style="left:10px;top:7px;">ALL DETAIL</div><div class="t s8" style="right:12px;top:10px;">REMAIN=100-USED</div><div class="hline thick" style="top:24px;"></div>
-          <div class="vline" style="left:200px;top:30px;height:106px;"></div><div class="hline" style="top:140px;"></div><div class="vline" style="left:200px;top:144px;height:106px;"></div>
 
-          <div class="t s10" style="left:12px;top:40px;">CLAUDE <span class="s8 muted">oauth</span></div><div class="t s10" style="right:210px;top:40px;">OK</div><div class="t s22" style="left:12px;top:57px;">56<span class="s12">%</span></div><div class="bar" style="left:12px;top:88px;width:172px;"><i style="width:56%;"></i></div><div class="t s8" style="left:12px;top:112px;">5H:73% | 5H reset 2h 18m</div><div class="t s8" style="left:12px;top:128px;">DAY:16% | W reset 3d 10h</div>
-          <div class="t s10" style="left:212px;top:40px;">CODEX <span class="s8 muted">app</span></div><div class="t s10" style="right:12px;top:40px;">SLOW</div><div class="t s22" style="left:212px;top:57px;">88<span class="s12">%</span></div><div class="bar" style="left:212px;top:88px;width:172px;"><i style="width:88%;"></i></div><div class="t s8" style="left:212px;top:112px;">5H:-- | 5H reset --</div><div class="t s8" style="left:212px;top:128px;">DAY:22%* | W reset 4d 1h</div>
-          <div class="t s10" style="left:12px;top:154px;">GROK <span class="s8 muted">billing</span></div><div class="t s10" style="right:210px;top:154px;">FAST</div><div class="t s22" style="left:12px;top:171px;">42<span class="s12">%</span></div><div class="bar" style="left:12px;top:202px;width:172px;"><i style="width:42%;"></i></div><div class="t s8" style="left:12px;top:226px;">5H:-- | 5H reset --</div><div class="t s8" style="left:12px;top:242px;">DAY:10% | W reset 4d 4h</div>
-          <div class="t s10" style="left:212px;top:154px;">OLLAMA <span class="s8 muted">cookie</span></div><div class="t s10" style="right:12px;top:154px;">OK</div><div class="t s22" style="left:212px;top:171px;">70<span class="s12">%</span></div><div class="bar" style="left:212px;top:202px;width:172px;"><i style="width:70%;"></i></div><div class="t s8" style="left:212px;top:226px;">5H:100% | 5H reset 3h 44m</div><div class="t s8" style="left:212px;top:242px;">DAY:14% | W reset 5d 0h</div>
+          <div class="t s10" style="left:10px;top:42px;">CLAUDE <span class="s8 muted">oauth</span></div><div class="t s10" style="right:10px;top:42px;">OK</div>
+          <div class="t s16" style="left:10px;top:62px;font-size:17px;font-weight:700;">56<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:56px;width:70px;height:9px;"><i style="width:56%;"></i></div><div class="t s8" style="left:128px;top:62px;">5H:73% D:16%* W:3d 10h</div>
+
+          <div class="hline" style="top:72px;"></div>
+          <div class="t s10" style="left:10px;top:87px;">CHIHYI <span class="s8 muted">app-server</span></div><div class="t s10" style="right:10px;top:87px;">SLOW</div>
+          <div class="t s16" style="left:10px;top:107px;font-size:17px;font-weight:700;">88<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:101px;width:70px;height:9px;"><i style="width:88%;"></i></div><div class="t s8" style="left:128px;top:107px;">5H:-- D:22%* W:4d 1h</div>
+
+          <div class="hline" style="top:117px;"></div>
+          <div class="t s10" style="left:10px;top:132px;">ALSTON <span class="s8 muted">app-server</span></div><div class="t s10" style="right:10px;top:132px;">--</div>
+          <div class="t s16" style="left:10px;top:152px;font-size:17px;font-weight:700;">22<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:146px;width:70px;height:9px;"><i style="width:22%;"></i></div><div class="t s8" style="left:128px;top:152px;">5H:-- D:-- W:6d 3h</div>
+
+          <div class="hline" style="top:162px;"></div>
+          <div class="t s10" style="left:10px;top:177px;">GROK <span class="s8 muted">billing</span></div><div class="t s10" style="right:10px;top:177px;">FAST</div>
+          <div class="t s16" style="left:10px;top:197px;font-size:17px;font-weight:700;">42<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:191px;width:70px;height:9px;"><i style="width:42%;"></i></div><div class="t s8" style="left:128px;top:197px;">5H:-- D:10% W:4d 4h</div>
+
+          <div class="hline" style="top:207px;"></div>
+          <div class="t s10" style="left:10px;top:222px;">OLLAMA <span class="s8 muted">cookie</span></div><div class="t s10" style="right:10px;top:222px;">OK</div>
+          <div class="t s16" style="left:10px;top:242px;font-size:17px;font-weight:700;">70<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:236px;width:70px;height:9px;"><i style="width:70%;"></i></div><div class="t s8" style="left:128px;top:242px;">5H:100% D:14% W:5d 0h</div>
 
           <div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">ingest 19:45</div><div class="t s8" style="right:80px;top:272px;">P0</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
         </div>
@@ -169,22 +183,22 @@
 
     <section class="panel" data-page="p1">
       <h2>P1 · Multi-source Trend</h2>
-      <p class="meta">最近 10 天、最多 128 點；四種 1bpp 線型與 100/7 輔助線，對齊現行 <code>renderTrend()</code>。</p>
-      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P1 / 5</span></div><div class="screen-shell">
+      <p class="meta">最近 10 天、最多 720 點；五種 1bpp 線型與 100/7 輔助線，對齊現行 <code>renderTrend()</code>。</p>
+      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P1 / 7</span></div><div class="screen-shell">
         <div class="screen" aria-label="P1 multi-source trend wireframe">
           <div class="t s12" style="left:10px;top:7px;">WEEK REMAIN TREND</div><div class="t s8" style="right:12px;top:10px;">LAST 10D</div><div class="hline thick" style="top:24px;"></div>
-          <div class="t s8" style="left:10px;top:34px;">— CLAUDE</div><div class="t s8" style="left:102px;top:34px;">·· CODEX</div><div class="t s8" style="left:194px;top:34px;">-· GROK</div><div class="t s8" style="left:284px;top:34px;">== OLLAMA</div>
+          <div class="t s8" style="left:10px;top:34px;">— CLAUDE</div><div class="t s8" style="left:90px;top:34px;">·· CHIHYI</div><div class="t s8" style="left:170px;top:34px;">-· ALSTON</div><div class="t s8" style="left:260px;top:34px;">-· GROK</div><div class="t s8" style="left:330px;top:34px;">== OLLAMA</div>
           <div class="frame" style="left:36px;top:50px;width:350px;height:172px;"></div><div class="t s8" style="left:8px;top:48px;">100</div><div class="t s8" style="left:14px;top:130px;">50</div><div class="t s8" style="left:20px;top:210px;">0</div>
-          <svg class="chart" style="left:36px;top:50px;width:350px;height:172px;" viewBox="0 0 350 172" aria-hidden="true"><path class="grid" d="M0 25H350 M0 49H350 M0 74H350 M0 98H350 M0 123H350 M0 147H350"/><path class="series" d="M4 20L38 28L72 35L106 47L140 57L174 71L208 89L242 96L276 83L310 79L346 76"/><path class="series dotted" d="M4 12L38 14L72 15L106 17L140 18L174 20L208 21L242 24L276 22L310 21L346 19"/><path class="series dashdot" d="M4 50L38 55L72 62L106 72L140 87L174 96L208 102L242 107L276 103L310 100L346 100"/><path class="series double" d="M4 140L38 132L72 121L106 112L140 101L174 91L208 81L242 71L276 66L310 59L346 52"/></svg>
-          <div class="t s8" style="left:40px;top:228px;">08/13</div><div class="t s8" style="left:181px;top:228px;">08/18</div><div class="t s8" style="right:16px;top:228px;">08/23</div><div class="t s8" style="left:10px;top:244px;">NOW C56 X88 G42 O70</div>
-          <div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">128 pts</div><div class="t s8" style="right:80px;top:272px;">P1</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
+          <svg class="chart" style="left:36px;top:50px;width:350px;height:172px;" viewBox="0 0 350 172" aria-hidden="true"><path class="grid" d="M0 25H350 M0 49H350 M0 74H350 M0 98H350 M0 123H350 M0 147H350"/><path class="series" d="M4 20L38 28L72 35L106 47L140 57L174 71L208 89L242 96L276 83L310 79L346 76"/><path class="series dotted" d="M4 12L38 14L72 15L106 17L140 18L174 20L208 21L242 24L276 22L310 21L346 19"/><path class="series" stroke-dasharray="4 3" d="M4 60L38 62L72 63L106 65L140 66L174 68L208 69L242 71L276 70L310 69L346 68"/><path class="series dashdot" d="M4 50L38 55L72 62L106 72L140 87L174 96L208 102L242 107L276 103L310 100L346 100"/><path class="series double" d="M4 140L38 132L72 121L106 112L140 101L174 91L208 81L242 71L276 66L310 59L346 52"/></svg>
+          <div class="t s8" style="left:40px;top:228px;">08/13</div><div class="t s8" style="left:181px;top:228px;">08/18</div><div class="t s8" style="right:16px;top:228px;">08/23</div><div class="t s8" style="left:10px;top:244px;">NOW C56 H88 A22 G42 O70</div>
+          <div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">720 pts</div><div class="t s8" style="right:80px;top:272px;">P1</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
         </div>
       </div></div>
     </section>
 
     <section class="panel" data-page="p2">
       <h2>P2 · Claude Source Trend</h2><p class="meta">單來源最近 10 天；實測線、reset 標記與 reset-aware 理想斜率。</p>
-      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P2 / 5</span></div><div class="screen-shell"><div class="screen" aria-label="P2 Claude source trend wireframe">
+      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P2 / 7</span></div><div class="screen-shell"><div class="screen" aria-label="P2 Claude source trend wireframe">
         <div class="t s12" style="left:10px;top:7px;">CLAUDE</div><div class="t s8" style="right:12px;top:10px;">P2 LAST 10D</div><div class="hline thick" style="top:24px;"></div><div class="t s22" style="left:10px;top:35px;">56<span class="s12">%</span></div><div class="t s8" style="left:92px;top:39px;">remain</div><div class="t s8" style="right:12px;top:38px;">reset 3d 10h</div>
         <div class="frame" style="left:36px;top:72px;width:350px;height:150px;"></div><div class="t s8" style="left:8px;top:70px;">100</div><div class="t s8" style="left:14px;top:142px;">50</div><div class="t s8" style="left:20px;top:210px;">0</div><svg class="chart" style="left:36px;top:72px;width:350px;height:150px;" viewBox="0 0 350 150" aria-hidden="true"><path class="grid" d="M0 38H350 M0 75H350 M0 112H350"/><path class="ideal" d="M8 8L156 142 M174 8L346 142"/><path class="reset" d="M168 0V150"/><path class="series" d="M8 22L42 30L76 40L110 53L144 70L166 82 M174 10L208 20L242 32L276 45L310 58L346 66"/></svg>
         <div class="t s8" style="left:194px;top:78px;">R</div><div class="t s8" style="left:40px;top:228px;">08/13</div><div class="t s8" style="right:16px;top:228px;">08/23</div><div class="t s8" style="left:10px;top:244px;">ACT -8.2%/d | IDEAL -14.3%/d | SLOW</div><div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">reset-aware</div><div class="t s8" style="right:80px;top:272px;">P2</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
@@ -192,29 +206,38 @@
     </section>
 
     <section class="panel" data-page="p3">
-      <h2>P3 · Codex Source Trend</h2><p class="meta">同一繪圖語法套用 Codex；資料不足時仍保留 reset 與目標斜率。</p>
-      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P3 / 5</span></div><div class="screen-shell"><div class="screen" aria-label="P3 Codex source trend wireframe">
-        <div class="t s12" style="left:10px;top:7px;">CODEX</div><div class="t s8" style="right:12px;top:10px;">P3 LAST 10D</div><div class="hline thick" style="top:24px;"></div><div class="t s22" style="left:10px;top:35px;">88<span class="s12">%</span></div><div class="t s8" style="left:92px;top:39px;">remain</div><div class="t s8" style="right:12px;top:38px;">reset 4d 1h</div>
+      <h2>P3 · Chihyi Source Trend</h2><p class="meta">同一繪圖語法套用 codex:chihyi；資料不足時仍保留 reset 與目標斜率。</p>
+      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P3 / 7</span></div><div class="screen-shell"><div class="screen" aria-label="P3 Chihyi source trend wireframe">
+        <div class="t s12" style="left:10px;top:7px;">CHIHYI</div><div class="t s8" style="right:12px;top:10px;">P3 LAST 10D</div><div class="hline thick" style="top:24px;"></div><div class="t s22" style="left:10px;top:35px;">88<span class="s12">%</span></div><div class="t s8" style="left:92px;top:39px;">remain</div><div class="t s8" style="right:12px;top:38px;">reset 4d 1h</div>
         <div class="frame" style="left:36px;top:72px;width:350px;height:150px;"></div><div class="t s8" style="left:8px;top:70px;">100</div><div class="t s8" style="left:14px;top:142px;">50</div><div class="t s8" style="left:20px;top:210px;">0</div><svg class="chart" style="left:36px;top:72px;width:350px;height:150px;" viewBox="0 0 350 150" aria-hidden="true"><path class="grid" d="M0 38H350 M0 75H350 M0 112H350"/><path class="ideal" d="M8 8L346 142"/><path class="series dotted" d="M8 10L48 11L88 13L128 14L168 16L208 17L248 18L288 20L346 19"/></svg>
         <div class="t s8" style="left:40px;top:228px;">08/13</div><div class="t s8" style="right:16px;top:228px;">08/23</div><div class="t s8" style="left:10px;top:244px;">ACT -1.2%/d | IDEAL -14.3%/d | SLOW</div><div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">reset-aware</div><div class="t s8" style="right:80px;top:272px;">P3</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
       </div></div></div>
     </section>
 
     <section class="panel" data-page="p4">
-      <h2>P4 · Grok Source Trend</h2><p class="meta">提前 reset 時，舊理想線在事件點截斷，新週期從 100% 重新計算。</p>
-      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P4 / 5</span></div><div class="screen-shell"><div class="screen" aria-label="P4 Grok source trend wireframe">
-        <div class="t s12" style="left:10px;top:7px;">GROK</div><div class="t s8" style="right:12px;top:10px;">P4 LAST 10D</div><div class="hline thick" style="top:24px;"></div><div class="t s22" style="left:10px;top:35px;">42<span class="s12">%</span></div><div class="t s8" style="left:92px;top:39px;">remain</div><div class="t s8" style="right:12px;top:38px;">reset 4d 4h</div>
-        <div class="frame" style="left:36px;top:72px;width:350px;height:150px;"></div><div class="t s8" style="left:8px;top:70px;">100</div><div class="t s8" style="left:14px;top:142px;">50</div><div class="t s8" style="left:20px;top:210px;">0</div><svg class="chart" style="left:36px;top:72px;width:350px;height:150px;" viewBox="0 0 350 150" aria-hidden="true"><path class="grid" d="M0 38H350 M0 75H350 M0 112H350"/><path class="ideal" d="M8 8L116 96 M132 8L346 142"/><path class="reset" d="M124 0V150"/><path class="series dashdot" d="M8 32L38 45L68 58L98 72L122 82 M132 10L168 24L204 38L240 53L276 68L312 82L346 87"/></svg>
-        <div class="t s8" style="left:153px;top:78px;">R</div><div class="t s8" style="left:40px;top:228px;">08/13</div><div class="t s8" style="right:16px;top:228px;">08/23</div><div class="t s8" style="left:10px;top:244px;">ACT -18.1%/d | IDEAL -14.3%/d | FAST</div><div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">reset-aware</div><div class="t s8" style="right:80px;top:272px;">P4</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
+      <h2>P4 · Alston Source Trend</h2><p class="meta">新增 codex:Alston 帳號；可能無 5h 資料，5h 欄位顯示 --。</p>
+      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P4 / 7</span></div><div class="screen-shell"><div class="screen" aria-label="P4 Alston source trend wireframe">
+        <div class="t s12" style="left:10px;top:7px;">ALSTON</div><div class="t s8" style="right:12px;top:10px;">P4 LAST 10D</div><div class="hline thick" style="top:24px;"></div><div class="t s22" style="left:10px;top:35px;">22<span class="s12">%</span></div><div class="t s8" style="left:92px;top:39px;">remain</div><div class="t s8" style="right:12px;top:38px;">reset 6d 3h</div>
+        <div class="frame" style="left:36px;top:72px;width:350px;height:150px;"></div><div class="t s8" style="left:8px;top:70px;">100</div><div class="t s8" style="left:14px;top:142px;">50</div><div class="t s8" style="left:20px;top:210px;">0</div><svg class="chart" style="left:36px;top:72px;width:350px;height:150px;" viewBox="0 0 350 150" aria-hidden="true"><path class="grid" d="M0 38H350 M0 75H350 M0 112H350"/><path class="ideal" d="M8 8L346 142"/><path class="series" stroke-dasharray="4 3" d="M8 120L48 118L88 116L128 114L168 112L208 110L248 108L288 106L346 104"/></svg>
+        <div class="t s8" style="left:40px;top:228px;">08/13</div><div class="t s8" style="right:16px;top:228px;">08/23</div><div class="t s8" style="left:10px;top:244px;">ACT -2.1%/d | IDEAL -14.3%/d | SLOW</div><div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">reset-aware</div><div class="t s8" style="right:80px;top:272px;">P4</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
       </div></div></div>
     </section>
 
     <section class="panel" data-page="p5">
-      <h2>P5 · Ollama Source Trend</h2><p class="meta">單來源圖表保留實際時間軸、reset/due 理想線與斜率摘要。</p>
-      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P5 / 5</span></div><div class="screen-shell"><div class="screen" aria-label="P5 Ollama source trend wireframe">
-        <div class="t s12" style="left:10px;top:7px;">OLLAMA</div><div class="t s8" style="right:12px;top:10px;">P5 LAST 10D</div><div class="hline thick" style="top:24px;"></div><div class="t s22" style="left:10px;top:35px;">70<span class="s12">%</span></div><div class="t s8" style="left:92px;top:39px;">remain</div><div class="t s8" style="right:12px;top:38px;">reset 5d 0h</div>
+      <h2>P5 · Grok Source Trend</h2><p class="meta">提前 reset 時，舊理想線在事件點截斷，新週期從 100% 重新計算。</p>
+      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P5 / 7</span></div><div class="screen-shell"><div class="screen" aria-label="P5 Grok source trend wireframe">
+        <div class="t s12" style="left:10px;top:7px;">GROK</div><div class="t s8" style="right:12px;top:10px;">P5 LAST 10D</div><div class="hline thick" style="top:24px;"></div><div class="t s22" style="left:10px;top:35px;">42<span class="s12">%</span></div><div class="t s8" style="left:92px;top:39px;">remain</div><div class="t s8" style="right:12px;top:38px;">reset 4d 4h</div>
+        <div class="frame" style="left:36px;top:72px;width:350px;height:150px;"></div><div class="t s8" style="left:8px;top:70px;">100</div><div class="t s8" style="left:14px;top:142px;">50</div><div class="t s8" style="left:20px;top:210px;">0</div><svg class="chart" style="left:36px;top:72px;width:350px;height:150px;" viewBox="0 0 350 150" aria-hidden="true"><path class="grid" d="M0 38H350 M0 75H350 M0 112H350"/><path class="ideal" d="M8 8L116 96 M132 8L346 142"/><path class="reset" d="M124 0V150"/><path class="series dashdot" d="M8 32L38 45L68 58L98 72L122 82 M132 10L168 24L204 38L240 53L276 68L312 82L346 87"/></svg>
+        <div class="t s8" style="left:153px;top:78px;">R</div><div class="t s8" style="left:40px;top:228px;">08/13</div><div class="t s8" style="right:16px;top:228px;">08/23</div><div class="t s8" style="left:10px;top:244px;">ACT -18.1%/d | IDEAL -14.3%/d | FAST</div><div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">reset-aware</div><div class="t s8" style="right:80px;top:272px;">P5</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
+      </div></div></div>
+    </section>
+
+    <section class="panel" data-page="p6">
+      <h2>P6 · Ollama Source Trend</h2><p class="meta">單來源圖表保留實際時間軸、reset/due 理想線與斜率摘要。</p>
+      <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P6 / 7</span></div><div class="screen-shell"><div class="screen" aria-label="P6 Ollama source trend wireframe">
+        <div class="t s12" style="left:10px;top:7px;">OLLAMA</div><div class="t s8" style="right:12px;top:10px;">P6 LAST 10D</div><div class="hline thick" style="top:24px;"></div><div class="t s22" style="left:10px;top:35px;">70<span class="s12">%</span></div><div class="t s8" style="left:92px;top:39px;">remain</div><div class="t s8" style="right:12px;top:38px;">reset 5d 0h</div>
         <div class="frame" style="left:36px;top:72px;width:350px;height:150px;"></div><div class="t s8" style="left:8px;top:70px;">100</div><div class="t s8" style="left:14px;top:142px;">50</div><div class="t s8" style="left:20px;top:210px;">0</div><svg class="chart" style="left:36px;top:72px;width:350px;height:150px;" viewBox="0 0 350 150" aria-hidden="true"><path class="grid" d="M0 38H350 M0 75H350 M0 112H350"/><path class="ideal" d="M8 8L346 142"/><path class="series double" d="M8 118L42 105L76 96L110 86L144 76L178 66L212 57L246 49L280 45L314 42L346 45"/></svg>
-        <div class="t s8" style="left:40px;top:228px;">08/13</div><div class="t s8" style="right:16px;top:228px;">08/23</div><div class="t s8" style="left:10px;top:244px;">ACT +4.5%/d | IDEAL -14.3%/d | RESET?</div><div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">reset-aware</div><div class="t s8" style="right:80px;top:272px;">P5</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
+        <div class="t s8" style="left:40px;top:228px;">08/13</div><div class="t s8" style="right:16px;top:228px;">08/23</div><div class="t s8" style="left:10px;top:244px;">ACT +4.5%/d | IDEAL -14.3%/d | RESET?</div><div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">reset-aware</div><div class="t s8" style="right:80px;top:272px;">P6</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
       </div></div></div>
     </section>
 
@@ -225,11 +248,17 @@
           <div class="t s12" style="left:10px;top:8px;">AI USAGE</div><div class="hline thick" style="top:28px;"></div><div class="t s14" style="left:0;top:108px;width:400px;text-align:center;">NO DATA</div><div class="t s10" style="left:0;top:140px;width:400px;text-align:center;">0 points after trigger retry</div><div class="t s8 muted" style="left:0;top:164px;width:400px;text-align:center;">Serial: poll: empty after retry</div><div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">offline</div><div class="dot" style="left:58px;top:271px;"></div><div class="t s8" style="right:80px;top:272px;">P0</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
         </div></div></div>
         <div class="bezel"><div class="bezel-label"><span>partial</span><span>state</span></div><div class="screen-shell"><div class="screen" aria-label="Partial source state wireframe">
-          <div class="t s12" style="left:10px;top:7px;">ALL DETAIL</div><div class="t s8" style="right:12px;top:10px;">PARTIAL 2/4</div><div class="hline thick" style="top:24px;"></div><div class="vline" style="left:200px;top:30px;height:106px;"></div><div class="hline" style="top:140px;"></div><div class="vline" style="left:200px;top:144px;height:106px;"></div>
-          <div class="t s10" style="left:12px;top:40px;">CLAUDE</div><div class="t s22" style="left:12px;top:57px;">56<span class="s12">%</span></div><div class="bar" style="left:12px;top:88px;width:172px;"><i style="width:56%;"></i></div><div class="t s8" style="left:12px;top:112px;">5H:73% | reset 2h 18m</div>
-          <div class="t s10" style="left:212px;top:40px;">CODEX</div><div class="t s22 muted" style="left:212px;top:57px;">--</div><div class="t s8 muted" style="left:212px;top:90px;">source fail</div>
-          <div class="t s10" style="left:12px;top:154px;">GROK</div><div class="t s22" style="left:12px;top:171px;">42<span class="s12">%</span></div><div class="bar" style="left:12px;top:202px;width:172px;"><i style="width:42%;"></i></div><div class="t s8" style="left:12px;top:226px;">DAY:10% | W reset 4d 4h</div>
-          <div class="t s10" style="left:212px;top:154px;">OLLAMA</div><div class="t s22 muted" style="left:212px;top:171px;">--</div><div class="t s8 muted" style="left:212px;top:204px;">missing</div><div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">partial</div><div class="dot" style="left:58px;top:271px;"></div><div class="t s8" style="left:72px;top:272px;">2/4 sources</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
+          <div class="t s12" style="left:10px;top:7px;">ALL DETAIL</div><div class="t s8" style="right:12px;top:10px;">PARTIAL 3/5</div><div class="hline thick" style="top:24px;"></div>
+          <div class="t s10" style="left:10px;top:42px;">CLAUDE</div><div class="t s10" style="right:10px;top:42px;">OK</div><div class="t s16" style="left:10px;top:62px;font-size:17px;font-weight:700;">56<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:56px;width:70px;height:9px;"><i style="width:56%;"></i></div><div class="t s8" style="left:128px;top:62px;">5H:73% D:16% W:3d 10h</div>
+          <div class="hline" style="top:72px;"></div>
+          <div class="t s10" style="left:10px;top:87px;">CHIHYI</div><div class="t s10" style="right:10px;top:87px;">SLOW</div><div class="t s16" style="left:10px;top:107px;font-size:17px;font-weight:700;">88<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:101px;width:70px;height:9px;"><i style="width:88%;"></i></div><div class="t s8" style="left:128px;top:107px;">5H:-- D:22% W:4d 1h</div>
+          <div class="hline" style="top:117px;"></div>
+          <div class="t s10" style="left:10px;top:132px;">ALSTON</div><div class="t s16 muted" style="left:10px;top:152px;font-size:17px;font-weight:700;">--</div><div class="t s8 muted" style="left:128px;top:152px;">source fail</div>
+          <div class="hline" style="top:162px;"></div>
+          <div class="t s10" style="left:10px;top:177px;">GROK</div><div class="t s10" style="right:10px;top:177px;">FAST</div><div class="t s16" style="left:10px;top:197px;font-size:17px;font-weight:700;">42<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:191px;width:70px;height:9px;"><i style="width:42%;"></i></div><div class="t s8" style="left:128px;top:197px;">5H:-- D:10% W:4d 4h</div>
+          <div class="hline" style="top:207px;"></div>
+          <div class="t s10" style="left:10px;top:222px;">OLLAMA</div><div class="t s16 muted" style="left:10px;top:242px;font-size:17px;font-weight:700;">--</div><div class="t s8 muted" style="left:128px;top:242px;">missing</div>
+          <div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">partial</div><div class="dot" style="left:58px;top:271px;"></div><div class="t s8" style="left:72px;top:272px;">3/5 sources</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
         </div></div></div>
       </div>
     </section>
@@ -238,8 +267,9 @@
   <aside class="notes">
     <h3>現行設計與刷新契約</h3>
     <ul>
-      <li><strong>頁面：</strong>P0 Combined → P1 Trend → P2 Claude → P3 Codex → P4 Grok → P5 Ollama；BOOT 短按與每 5 分鐘自動循環。</li>
+      <li><strong>頁面：</strong>P0 Combined → P1 Trend → P2 Claude → P3 Chihyi → P4 Alston → P5 Grok → P6 Ollama；BOOT 短按與每 5 分鐘自動循環。</li>
       <li><strong>資料：</strong>每 15 分鐘開 Wi-Fi 拉取；BOOT 短按停止操作 10 秒後額外更新一次，完成後 radio off。</li>
+      <li><strong>來源：</strong><code>claude</code>、<code>codex:chihyi</code>、<code>codex:Alston</code>、<code>grok</code>、<code>ollama</code>；舊 <code>codex</code> key 已不存在（2026-08-26 起）。</li>
       <li><strong>恢復：</strong><code>/data</code> 為 0 points 時呼叫 <code>POST /trigger</code>，等待後只重試一次；失敗狀態保留 Serial 與畫面診斷。</li>
       <li><strong>刷新：</strong>reset 倒數與電量在分鐘變化時重畫；靜態頁不做高 FPS 動畫。UPD 提示必須與頁面內容合併送出，避免同一畫面重複 full-buffer 傳送。</li>
       <li><strong>顯示：</strong>400×300、<code>U8G2_R1</code>、黑白 1bpp；線型、反白、線框與留白建立層次，不使用假灰階。</li>

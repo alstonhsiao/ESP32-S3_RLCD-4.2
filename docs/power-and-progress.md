@@ -26,8 +26,8 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 | 領域 | 現況 |
 | --- | --- |
 | 基建 | SPEC、Arduino + U8g2、Hello RLCD 與 aiusage 多頁已完成 |
-| aiusage | 現行程式為 P0 Combined、P1 Trend、P2–P5 四源最近 10 天圖表；2026-08-22 合併首頁後待實機確認 |
-| UX | HTML wireframe 已同步現行 P0–P5；P0 Combined 間距、P1 多線可讀性與軟體反顯仍待實機確認 |
+| aiusage | 現行程式為 P0 Combined、P1 Trend、P2–P6 五源最近 10 天圖表；2026-08-26 從 4 源擴充為 5 源（新增 codex:Alston），P0 改五列橫排；待實機確認 |
+| UX | HTML wireframe 已同步現行 P0–P6；P0 Combined 五列間距、P1 五線可讀性與軟體反顯仍待實機確認 |
 | 穩定度 | HTTPS／較大 JSON、離線 stale、重試與精簡 API 待驗證 |
 | 感測與互動 | SHTC3、KEY 第二操作、天氣或本機 proxy 待規劃 |
 | 工程 | `aiusage_home` 拆分 ui／net／data、GitHub remote 檢查可選 |

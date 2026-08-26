@@ -8,9 +8,9 @@
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
- *   P0 Combined — merged table: remain% + 5h + day% + reset per source
- *   P1 Trend  — last 10d remain% polylines (4 series, thick styles)
- *   P2-P5    — one 10d remain% chart per source, reset-aware ideal slope
+ *   P0 Combined — 5 horizontal rows: remain% + 5h + day% + reset per source
+ *   P1 Trend  — last 10d remain% polylines (5 series, distinct 1bpp styles)
+ *   P2-P6    — one 10d remain% chart per source, reset-aware ideal slope
  * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes
  * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD)
  *
@@ -45,7 +45,8 @@
 
 #define W 400
 #define H 300
-#define PAGE_COUNT 6
+#define N_SOURCES 5
+#define PAGE_COUNT 7
 #define CHART_PAGE_BASE 2
 // Trend buffer: 20-min grid over the 10d window (720 slots). parsePayload
 // downsamples denser cloud points by keeping the last point of each slot, so
@@ -90,16 +91,17 @@ struct UsageSnapshot {
   bool valid = false;
   int pointCount = 0;
   char ingestShort[20] = "";
-  SourceUi src[4] = {
+  SourceUi src[N_SOURCES] = {
     {"CLAUDE", "", false, false, -1, -1, 0, 0},
-    {"CODEX",  "", false, false, -1, -1, 0, 0},
+    {"CHIHYI", "", false, false, -1, -1, 0, 0},
+    {"ALSTON", "", false, false, -1, -1, 0, 0},
     {"GROK",   "", false, false, -1, -1, 0, 0},
     {"OLLAMA", "", false, false, -1, -1, 0, 0},
   };
   // trend: remain% 0..100, or -1 missing; chronological oldest→newest
-  int8_t trend[4][TREND_N];
+  int8_t trend[N_SOURCES][TREND_N];
   long trendTs[TREND_N];
-  long trendResetWeek[4][TREND_N];
+  long trendResetWeek[N_SOURCES][TREND_N];
   int trendN = 0;
   char trendStartLbl[8] = "";
   char trendEndLbl[8] = "";
@@ -386,7 +388,7 @@ static bool parsePayload(const String& payload) {
   gSnap.pointCount = nPts;
   shortIngest(doc["last_ingest_at"] | doc["exported_at"] | "", gSnap.ingestShort, sizeof(gSnap.ingestShort));
 
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < N_SOURCES; i++) {
     gSnap.src[i].ok = false;
     gSnap.src[i].present = false;
     gSnap.src[i].remainWeek = -1;
@@ -409,7 +411,7 @@ static bool parsePayload(const String& payload) {
     return true;
   }
 
-  const char* keys[4] = {"claude", "codex", "grok", "ollama"};
+  const char* keys[N_SOURCES] = {"claude", "codex:chihyi", "codex:Alston", "grok", "ollama"};
 
   // last point → current UI
   JsonObject last = points[nPts - 1].as<JsonObject>();
@@ -418,7 +420,7 @@ static bool parsePayload(const String& payload) {
     gSnap.valid = false;
     return true;
   }
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < N_SOURCES; i++) {
     JsonObject s = sources[keys[i]].as<JsonObject>();
     if (s.isNull()) continue;
     fillSourceFromJson(gSnap.src[i], s);
@@ -449,7 +451,7 @@ static bool parsePayload(const String& payload) {
     if (ti == 0) labelFromPoint(pt, gSnap.trendStartLbl, sizeof(gSnap.trendStartLbl));
     labelFromPoint(pt, gSnap.trendEndLbl, sizeof(gSnap.trendEndLbl));
     JsonObject srcs = pt["sources"].as<JsonObject>();
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < N_SOURCES; i++) {
       if (srcs.isNull()) { gSnap.trend[i][ti] = -1; continue; }
       JsonObject s = srcs[keys[i]].as<JsonObject>();
       if (s.isNull() || !sourceJsonOk(s) || s["used_weekly_pct"].isNull()) {
@@ -529,10 +531,11 @@ static bool pollData() {
           http2.end();
           gLink = LinkState::Online;
           gLastErr[0] = 0;
-          Serial.printf("poll ok (after trigger): pts=%d trend=%d C=%.0f X=%.0f G=%.0f O=%.0f\n",
+          Serial.printf("poll ok (after trigger): pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f\n",
                         gSnap.pointCount, gSnap.trendN,
                         gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
-                        gSnap.src[2].remainWeek, gSnap.src[3].remainWeek);
+                        gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
+                        gSnap.src[4].remainWeek);
           return true;
         }
         Serial.printf("poll retry: still empty (pts=%d)\n", gSnap.pointCount);
@@ -551,10 +554,11 @@ static bool pollData() {
 
   gLink = LinkState::Online;
   gLastErr[0] = 0;
-  Serial.printf("poll ok: pts=%d trend=%d C=%.0f X=%.0f G=%.0f O=%.0f\n",
+  Serial.printf("poll ok: pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f\n",
                 gSnap.pointCount, gSnap.trendN,
                 gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
-                gSnap.src[2].remainWeek, gSnap.src[3].remainWeek);
+                gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
+                gSnap.src[4].remainWeek);
   return true;
 }
 
@@ -602,37 +606,9 @@ static void drawBottomBar(const char* extraHint) {
   drawBatteryRight(W - 12, 267, gBat);
 }
 
-static void drawSourceCell(int x, int y, const SourceUi& s) {
-  // Name + origin on one line: "CLAUDE oauth"
-  u8g2.setFont(u8g2_font_helvB10_tf);
-  u8g2.drawStr(x, y, s.name);
-  if (s.origin[0]) {
-    int nw = u8g2.getStrWidth(s.name);
-    u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.drawStr(x + nw + 4, y, s.origin);
-  }
-
-  if (!s.present || !s.ok || s.remainWeek < 0) {
-    u8g2.setFont(u8g2_font_logisoso22_tn);
-    u8g2.drawStr(x, y + 30, "--");
-    u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.drawStr(x, y + 46, s.present ? "source fail" : "missing");
-    return;
-  }
-
-  char num[12];
-  snprintf(num, sizeof(num), "%.0f", s.remainWeek);
-  u8g2.setFont(u8g2_font_logisoso22_tn);
-  u8g2.drawStr(x, y + 30, num);
-  int nw = u8g2.getStrWidth(num);
-  u8g2.setFont(u8g2_font_helvB10_tf);
-  u8g2.drawStr(x + nw + 2, y + 28, "%");
-
-  drawBar(x, y + 38, 172, 12, s.remainWeek / 100.0f);
-}
-
 // ---- pages ----
-// line styles: 0 solid, 1 thick dotted, 2 thick dash-dot, 3 double solid
+// line styles: 0 solid, 1 thick dotted, 2 thick dash-dot, 3 double solid,
+// 4 thin dashed (single-pixel dashes)
 static void plotSegment(int x0, int y0, int x1, int y1, int style) {
   if (style == 0) {
     u8g2.drawLine(x0, y0, x1, y1);
@@ -664,6 +640,21 @@ static void plotSegment(int x0, int y0, int x1, int y1, int style) {
         u8g2.drawPixel(x, y);
         u8g2.drawPixel(x, y - 1);
         u8g2.drawPixel(x, y + 1);
+      }
+    }
+  } else if (style == 4) {
+    // thin dashed: single-pixel dashes with gaps
+    int dx = x1 - x0, dy = y1 - y0;
+    int steps = max(abs(dx), abs(dy));
+    if (steps <= 0) {
+      u8g2.drawPixel(x0, y0);
+      return;
+    }
+    for (int i = 0; i <= steps; i++) {
+      if ((i % 8) < 4) {
+        int x = x0 + (int)((long)dx * i / steps);
+        int y = y0 + (int)((long)dy * i / steps);
+        u8g2.drawPixel(x, y);
       }
     }
   } else {
@@ -710,12 +701,13 @@ static void renderTrend() {
   u8g2.drawHLine(8, 24, W - 16);
   u8g2.drawHLine(8, 25, W - 16);
 
-  // legend
+  // legend (5 sources: CLAUDE, CHIHYI, ALSTON, GROK, OLLAMA)
   u8g2.setFont(u8g2_font_6x13_tf);
   u8g2.drawStr(10, 40, "- CLAUDE");
-  u8g2.drawStr(110, 40, ":: CODEX");
-  u8g2.drawStr(215, 40, "= GROK");
-  u8g2.drawStr(295, 40, "== OLLAMA");
+  u8g2.drawStr(90, 40, ":: CHIHYI");
+  u8g2.drawStr(170, 40, "-. ALSTON");
+  u8g2.drawStr(260, 40, "= GROK");
+  u8g2.drawStr(330, 40, "== OLLAMA");
 
   // chart taller after removing NOW strip
   const int left = 40, top = 50, cw = 346, ch = 188;
@@ -734,9 +726,10 @@ static void renderTrend() {
 
   if (gSnap.trendN >= 2) {
     drawTrendSeries(left, top, cw, ch, 0, 0);  // CLAUDE solid
-    drawTrendSeries(left, top, cw, ch, 1, 1);  // CODEX thick dotted
-    drawTrendSeries(left, top, cw, ch, 2, 2);  // GROK thick dash
-    drawTrendSeries(left, top, cw, ch, 3, 3);  // OLLAMA double solid
+    drawTrendSeries(left, top, cw, ch, 1, 1);  // CHIHYI thick dotted
+    drawTrendSeries(left, top, cw, ch, 2, 4);  // ALSTON thin dashed
+    drawTrendSeries(left, top, cw, ch, 3, 2);  // GROK thick dash
+    drawTrendSeries(left, top, cw, ch, 4, 3);  // OLLAMA double solid
   } else {
     u8g2.setFont(u8g2_font_6x13_tf);
     strCenter(left + cw / 2, top + ch / 2, "not enough points");
@@ -1036,8 +1029,8 @@ static void renderSourceTrend(int srcIdx) {
   drawBottomBar("R=reset D=due");
 }
 
-// P0 — Detail + Pace merged into a 2x2 grid, with 5h/day%/reset/pace
-// packed under each source's week-remain bar.
+// P0 — 5 horizontal rows, one per source. Each row: name+origin (top line),
+// big remain% + bar + 5h/day/week-reset (bottom line), pace right-aligned.
 static void renderCombined() {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
@@ -1050,53 +1043,79 @@ static void renderCombined() {
   u8g2.drawHLine(8, 24, W - 16);
   u8g2.drawHLine(8, 25, W - 16);
 
-  float day[4];
+  float day[N_SOURCES];
   float best = -1.0f;
   int bestIdx = -1;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < N_SOURCES; i++) {
     day[i] = dailyBudgetPct(gSnap.src[i]);
     if (day[i] > best) { best = day[i]; bestIdx = i; }
   }
 
-  // 2x2 layout: cols at x=12/212, split at x=200
-  static const int cx[4] = {12, 212, 12, 212};
-  static const int cy[4] = {32, 32, 146, 146};
-  static const int crx[4] = {190, 388, 190, 388};  // right edge of each cell, for pace label
+  // 5 rows in the content area (y=26..255). Row height ~44px.
+  const int rowTop[N_SOURCES] = {30, 75, 120, 165, 210};
+  const int rowH = 44;
 
-  u8g2.drawVLine(200, 30, 106);
-  u8g2.drawHLine(8, 140, W - 16);
-  u8g2.drawVLine(200, 144, 106);
+  // separator lines between rows
+  for (int i = 0; i < N_SOURCES - 1; i++) {
+    int y = rowTop[i] + rowH - 2;
+    u8g2.drawHLine(8, y, W - 16);
+  }
 
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < N_SOURCES; i++) {
     const SourceUi& s = gSnap.src[i];
-    int x = cx[i], ty = cy[i];
+    int ty = rowTop[i];
 
-    // name + big % + bar; reset details are drawn below the shared cell
-    drawSourceCell(x, ty + 16, s);
-
-    // pace (OK/SLOW/FAST) on the name row, right-aligned — clear of the
-    // name/origin text on the left and the metric lines below
+    // --- top line: name + origin (left), pace (right) ---
     u8g2.setFont(u8g2_font_helvB10_tf);
-    strRight(crx[i], ty + 16, paceLabel(day[i]));
+    u8g2.drawStr(10, ty + 12, s.name);
+    if (s.origin[0]) {
+      int nw = u8g2.getStrWidth(s.name);
+      u8g2.setFont(u8g2_font_6x13_tf);
+      u8g2.drawStr(10 + nw + 4, ty + 12, s.origin);
+    }
+    u8g2.setFont(u8g2_font_helvB10_tf);
+    strRight(W - 10, ty + 12, paceLabel(day[i]));
 
-    char five[12], dayS[12], r5[16], rw[16], line1[40], line2[40];
-    if (!s.present || !s.ok || s.remain5h < 0) snprintf(five, sizeof(five), "--");
+    // --- bottom line: big remain% + bar + 5h/day/week-reset ---
+    if (!s.present || !s.ok || s.remainWeek < 0) {
+      u8g2.setFont(u8g2_font_logisoso16_tn);
+      u8g2.drawStr(10, ty + 36, "--");
+      u8g2.setFont(u8g2_font_6x13_tf);
+      u8g2.drawStr(10 + 32, ty + 34, s.present ? "source fail" : "missing");
+      continue;
+    }
+
+    // big remain number (16pt) + % sign
+    char num[12];
+    snprintf(num, sizeof(num), "%.0f", s.remainWeek);
+    u8g2.setFont(u8g2_font_logisoso16_tn);
+    u8g2.drawStr(10, ty + 36, num);
+    int nw = u8g2.getStrWidth(num);
+    u8g2.setFont(u8g2_font_helvB10_tf);
+    u8g2.drawStr(10 + nw + 1, ty + 34, "%");
+
+    // progress bar after the number
+    int barX = 10 + nw + 14;
+    int barW = 70;
+    drawBar(barX, ty + 27, barW, 9, s.remainWeek / 100.0f);
+
+    // metrics line: 5H:xx%  DAY:xx%*  W reset xx
+    char five[12], dayS[12], rw[16], line[56];
+    if (s.remain5h < 0) snprintf(five, sizeof(five), "--");
     else snprintf(five, sizeof(five), "%.0f%%", s.remain5h);
     if (day[i] < 0.0f) snprintf(dayS, sizeof(dayS), "--");
     else snprintf(dayS, sizeof(dayS), "%.0f%%", day[i]);
-    fmtReset(s.reset5h, r5, sizeof(r5));
     fmtReset(s.resetWeek, rw, sizeof(rw));
 
-    snprintf(line1, sizeof(line1), "5H:%s   | 5H reset %s", five, r5);
-    snprintf(line2, sizeof(line2), "DAY:%s%s  | W reset %s", dayS,
+    snprintf(line, sizeof(line), "5H:%s  D:%s%s  W:%s", five, dayS,
              (i == bestIdx && day[i] >= 0.0f) ? "*" : "", rw);
 
     u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.drawStr(x, ty + 80, line1);
-    u8g2.drawStr(x, ty + 96, line2);
+    int mtrX = barX + barW + 8;
+    u8g2.drawStr(mtrX, ty + 34, line);
   }
 
-  drawBottomBar(nullptr);  // show ingest time / status, same as P0
+  drawBottomBar(nullptr);  // show ingest time / status
 }
 
 static void render() {
@@ -1110,7 +1129,7 @@ static void render() {
   } else {
     if (gPage == 0) renderCombined();
     else if (gPage == 1) renderTrend();
-    else if (gPage < CHART_PAGE_BASE + 4) renderSourceTrend(gPage - CHART_PAGE_BASE);
+    else if (gPage < CHART_PAGE_BASE + N_SOURCES) renderSourceTrend(gPage - CHART_PAGE_BASE);
     else renderCombined();
   }
 
@@ -1279,7 +1298,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("aiusage_home: boot (P0-P5 / 5m page / 15m poll / radio-off)");
+  Serial.println("aiusage_home: boot (P0-P6 / 5m page / 15m poll / radio-off)");
 
   pinMode(BTN_BOOT, INPUT_PULLUP);
   gLastBtn = digitalRead(BTN_BOOT);
