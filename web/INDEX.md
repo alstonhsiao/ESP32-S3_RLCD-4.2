@@ -4,7 +4,7 @@
 
 | 檔案 | 用途 |
 | --- | --- |
-| `aiusage-analysis.html` | 電腦端 AI 用量分析：四個來源分開畫圖、reset 事件與消耗斜率 |
+| `aiusage-analysis.html` | 電腦端 AI 用量分析：目前仍為四源（`claude` / `codex` / `grok` / `ollama`）分圖、reset 事件與消耗斜率 |
 | `serve.py` | 本機靜態伺服器與 `/data` 代理，避免瀏覽器跨來源限制 |
 | `README.md` | 啟動、匯入資料與判讀方式 |
 
@@ -13,3 +13,4 @@
 - Weekly／5h 的 Y 軸都是剩餘額度 `100 - used_*_pct`，向下代表消耗增加。
 - reset 事件以相鄰歷史點的跳變、reset 欄位更新與預定時間交叉判定。
 - 事件時間若沒有剛好落在快照上，會保留前後快照範圍，並標記「確認／預定／疑似」。
+- 韌體與 `ui/` wireframe 已改五源（`codex:chihyi`、`codex:Alston`）；本 HTML 仍使用舊 `codex` key，尚未同步。

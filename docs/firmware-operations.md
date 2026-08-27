@@ -15,7 +15,7 @@
 
 ## 編譯、燒錄與監看
 
-Agent 燒錄請先讀 [`flash-firmware` skill](../.agents/skills/flash-firmware/SKILL.md)，再跑 [`scripts/flash.sh`](../.agents/skills/flash-firmware/scripts/flash.sh)，不要自組不完整 FQBN。人類也可直接用同一支腳本。
+Agent 燒錄請先讀 [`flash-firmware` skill](../.agents/skills/flash-firmware/SKILL.md)，再跑 [`.agents/skills/flash-firmware/scripts/flash.sh`](../.agents/skills/flash-firmware/scripts/flash.sh)，不要自組不完整 FQBN。人類也可直接用同一支腳本。
 
 若需手動排錯，先用 `arduino-cli board list` 確認目前 PORT，再依目標 sketch 執行以下完整備援流程：
 

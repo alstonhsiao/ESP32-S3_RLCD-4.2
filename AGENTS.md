@@ -8,11 +8,12 @@
 | --- | --- |
 | 確認硬體事實、顯示方向或 GPIO | `docs/specs/INDEX.md` → `HARDWARE-SPEC.md`／`PINOUT.md`／schematic |
 | 了解 Arduino 版本、編譯、燒錄、配網與復原 | `docs/firmware-operations.md`、`firmware/INDEX.md` |
-| 把韌體燒到已連線的板子 | `.agents/skills/flash-firmware/SKILL.md` → `scripts/flash.sh` |
+| 把韌體燒到已連線的板子 | `.agents/skills/flash-firmware/SKILL.md` → `.agents/skills/flash-firmware/scripts/flash.sh` |
 | 修改或除錯 aiusage 主韌體 | `firmware/aiusage_home/INDEX.md` → `aiusage_home.ino` |
 | 調整 Hello 顯示驗證 | `firmware/hello_rlcd/README.md`、`firmware/hello_rlcd/hello_rlcd.ino` |
 | 調整版面、頁面或單色 wireframe | `docs/ui-and-data.md`、`ui/INDEX.md` |
 | 理解 aiusage API、頁面語義與刷新節奏 | `docs/ui-and-data.md` |
+| 調整電腦端用量分析原型 | `web/INDEX.md` → `aiusage-analysis.html` |
 | 查電池實測、待辦、歷史決策與刻意不做事項 | `docs/power-and-progress.md` |
 | 查已放棄、重複、未完成與待核准刪除項目 | `docs/cleanup-plan.md` |
 | 人類導向的專案總覽 | `README.md` |

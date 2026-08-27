@@ -1,6 +1,6 @@
 # Web 用量分析
 
-`aiusage-analysis.html` 是先於 RLCD 驗證資料語義的電腦端原型。Claude、Codex、Grok、Ollama 各自有一張圖，並固定只顯示最近 10 天，避免四個來源疊線或歷史過長後難以判讀。
+`aiusage-analysis.html` 是先於 RLCD 驗證資料語義的電腦端原型。目前仍為 Claude、Codex、Grok、Ollama 四張分圖（舊 `codex` key），並固定只顯示最近 10 天，避免來源疊線或歷史過長後難以判讀。韌體與 `ui/` wireframe 已改五源（`codex:chihyi`、`codex:Alston`）；本原型尚未同步。
 
 ## 開啟
 

@@ -8,7 +8,7 @@
 | 檔案 | 說明 |
 | --- | --- |
 | [aiusage-wireframe.html](./aiusage-wireframe.html) | 現行 P0–P6 與 Error／Partial 狀態的 AI 週剩餘 wireframe |
-| [../web/aiusage-analysis.html](../web/aiusage-analysis.html) | 電腦端五源分析圖表；P2–P6 RLCD 頁面的資料、reset/due 與斜率原型 |
+| [../web/aiusage-analysis.html](../web/aiusage-analysis.html) | 電腦端四源分析圖表（仍用舊 `codex` key，尚未同步韌體五源）；P2–P6 的 reset/due 與斜率原型 |
 
 ## 如何預覽
 

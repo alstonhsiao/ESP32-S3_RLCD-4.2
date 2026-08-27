@@ -15,7 +15,7 @@
 | 框架 | **Arduino + U8g2**（已鎖定） |
 | Hello 螢幕 | ✅ `firmware/hello_rlcd` |
 | AI 用量儀表 | `firmware/aiusage_home` — 現行程式為 P0–P6（五來源）；2026-08-26 從 4 源擴充為 5 源（新增 `codex:Alston`，原 `codex` 改為 `codex:chihyi`），P0 改為五列橫排；P1 趨勢五線；P2–P6 各源圖表；趨勢緩衝擴為完整 10 天／最多 720 點（20 分鐘格降取樣），理想線可從真實 reset 錨點滿高繪出 |
-| Web 用量分析 | ✅ `web/aiusage-analysis.html` — 五來源分圖、reset 與斜率判定 |
+| Web 用量分析 | `web/aiusage-analysis.html` — 目前仍為四源分圖（含舊 `codex` key）、reset 與斜率判定；韌體／wireframe 已是五源，原型尚未同步 |
 | 資料源 | `https://aiusage-web.zeabur.app/data`（雲端 SQLite + persistent volume；週剩餘 % = 100 − used） |
 | 資料可靠性 | ✅ 韌體在 `/data` 返回 0 points 時自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試 |
 | 換頁 | **短按 BOOT**；長按 3s 配網（AP `AIUsage-RLCD`，僅 2.4 GHz） |
