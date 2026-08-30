@@ -5,6 +5,10 @@
  *   Cloud SQLite (persistent volume) fed by local usage-history.db via upsert.
  *   If /data returns 0 points, firmware auto-triggers POST /trigger to kick
  *   KM → notify_all → sync_usage_web, then re-fetches.
+ *   The payload is scanned as a byte stream and never buffered whole: it has
+ *   outgrown internal RAM (686 KB by 2026-08-30), which crashed the WiFi PHY
+ *   timer alloc with ESP_ERR_NO_MEM. Only the last point + the 10d trend grid
+ *   are kept.
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
@@ -21,10 +25,11 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include <U8g2lib.h>
 #include <SPI.h>
 #include <time.h>
+#include <string.h>
+#include <stdlib.h>
 #include <WiFiManager.h>
 
 #if __has_include("secrets.h")
@@ -48,9 +53,9 @@
 #define N_SOURCES 5
 #define PAGE_COUNT 7
 #define CHART_PAGE_BASE 2
-// Trend buffer: 20-min grid over the 10d window (720 slots). parsePayload
-// downsamples denser cloud points by keeping the last point of each slot, so
-// resets older than ~2 days stay visible as R anchors for the ideal line.
+// Trend buffer: 20-min grid over the 10d window (720 slots). The stream
+// scanner downsamples denser cloud points by keeping the last point of each
+// slot, so resets older than ~2 days stay visible as R anchors.
 #define TREND_N 720
 #define TREND_GRID_SEC (20L * 60L)
 #define TREND_WINDOW_SEC (10L * 86400L)
@@ -58,6 +63,8 @@
 #define SLOPE_TOLERANCE 0.10f
 // Reset markers are sparse (a handful per week); no need to scale with TREND_N.
 #define TREND_EVENT_MAX 32
+
+#include "usage_scan.h"
 
 // Data source: cloud SQLite (persistent volume on Zeabur), fed by local SQLite upsert.
 // GET /data reads from cloud DB; POST /trigger kicks KM to query AI quota + sync.
@@ -288,17 +295,13 @@ static void shortIngest(const char* iso, char* out, size_t n) {
   snprintf(out, n, "%.16s", iso);
 }
 
-static void labelFromPoint(JsonObject pt, char* out, size_t n) {
-  // Prefer ts "2026-08-04T19:45:45+08:00" -> "08/04"
-  const char* ts = pt["ts"] | "";
-  if (ts[0] && strlen(ts) >= 10) {
-    // YYYY-MM-DD...
-    snprintf(out, n, "%.2s/%.2s", ts + 5, ts + 8);
+static void labelFromIsoOrEpoch(const char* iso, long epoch, char* out, size_t n) {
+  if (iso && iso[0] && strlen(iso) >= 10) {
+    snprintf(out, n, "%.2s/%.2s", iso + 5, iso + 8);
     return;
   }
-  long ep = pt["ts_epoch"] | 0L;
-  if (ep > 100000) {
-    time_t t = (time_t)ep;
+  if (epoch > 100000) {
+    time_t t = (time_t)epoch;
     struct tm tm;
     localtime_r(&t, &tm);
     snprintf(out, n, "%02d/%02d", tm.tm_mon + 1, tm.tm_mday);
@@ -307,9 +310,8 @@ static void labelFromPoint(JsonObject pt, char* out, size_t n) {
   snprintf(out, n, "--");
 }
 
-static float remainFromUsed(JsonVariant used) {
-  if (used.isNull()) return -1;
-  float rem = 100.0f - used.as<float>();
+static float remainFromUsed(float used) {
+  float rem = 100.0f - used;
   if (rem < 0) rem = 0;
   if (rem > 100) rem = 100;
   return rem;
@@ -331,29 +333,374 @@ static const char* linkLabel(LinkState s) {
   }
 }
 
-static bool sourceJsonOk(JsonObject s);
+// ---- streaming scan of /data ----
+// The cloud payload grows unboundedly (full history; 686 KB and rising as of
+// 2026-08-30). http.getString() materialized it in internal RAM, exhausted the
+// heap, and crashed the WiFi PHY timer alloc (ESP_ERR_NO_MEM in
+// phy_track_pll_init) → reboot loop with the screen stuck on "no data". We now
+// feed bytes from the HTTP stream through a scanner that keeps only what the
+// UI needs: the last point's per-source values and the 10d trend buffer.
+// Host-verified against the live payload: all 1039 points, every field
+// identical to the previous full-JSON parse.
+static const char* SRC_KEYS[N_SOURCES] = {"claude", "codex:chihyi", "codex:Alston", "grok", "ollama"};
 
-static void fillSourceFromJson(SourceUi& dst, JsonObject s) {
-  dst.present = true;
-  dst.ok = sourceJsonOk(s);
-  shortOrigin(s["origin"] | "", dst.origin, sizeof(dst.origin));
-  dst.remainWeek = remainFromUsed(s["used_weekly_pct"]);
-  dst.remain5h = remainFromUsed(s["used_5h_pct"]);
-  dst.resetWeek = s["resets_weekly_at"].isNull() ? 0 : s["resets_weekly_at"].as<long>();
-  dst.reset5h = s["resets_5h_at"].isNull() ? 0 : s["resets_5h_at"].as<long>();
+static TrendSlot gScanRing[TREND_N];
+static int gScanRingHead = 0;
+static int gScanRingN = 0;
+
+static void scanRingClear() {
+  gScanRingHead = 0;
+  gScanRingN = 0;
 }
 
-// Some /data snapshots omit `ok` when the numeric fields themselves are valid.
-// Treat an explicit error or false `ok` as failure, otherwise accept numeric data.
-static bool sourceJsonOk(JsonObject s) {
-  if (!s["error"].isNull()) return false;
-  if (!s["ok"].isNull()) return s["ok"] | false;
-  return !s["used_weekly_pct"].isNull() || !s["used_5h_pct"].isNull();
+static void scanRingPush(const TrendSlot& s) {
+  if (gScanRingN < TREND_N) {
+    gScanRing[(gScanRingHead + gScanRingN) % TREND_N] = s;
+    gScanRingN++;
+  } else {
+    gScanRing[gScanRingHead] = s;
+    gScanRingHead = (gScanRingHead + 1) % TREND_N;
+  }
 }
 
-static long pointEpoch(JsonObject pt) {
-  long ep = pt["ts_epoch"] | 0L;
-  return ep > 100000 ? ep : 0L;
+static bool sourceScanOk(const ScanPoint& p, int i) {
+  if (p.hasError[i]) return false;
+  if (p.hasOk[i]) return !p.okFalse[i];
+  return p.hasWeekly[i] || p.has5h[i];
+}
+
+static void scanPushSlot(const ScanPoint& p) {
+  if (!p.hasEpoch || p.epoch <= 100000) return;
+  TrendSlot s;
+  s.epoch = p.epoch;
+  s.md[0] = 0;
+  if (p.iso[0] && strlen(p.iso) >= 10)
+    snprintf(s.md, sizeof(s.md), "%.2s/%.2s", p.iso + 5, p.iso + 8);
+  for (int i = 0; i < N_SOURCES; i++) {
+    s.remain[i] = -1;
+    s.resetWeek[i] = 0;
+    if (!p.present[i] || !sourceScanOk(p, i) || !p.hasWeekly[i]) continue;
+    s.remain[i] = (int8_t)(remainFromUsed(p.weekly[i]) + 0.5f);
+    s.resetWeek[i] = p.resetWeek[i];
+  }
+  scanRingPush(s);
+}
+
+static void scanApplyPoint(ScanState& st) {
+  st.last = st.pt;
+  st.pointCount++;
+  if (!st.pt.hasEpoch || st.pt.epoch <= 100000) return;
+  long slot = st.pt.epoch / TREND_GRID_SEC;
+  if (st.slotHas && slot == st.slotNo) {
+    st.slotPt = st.pt;
+    return;
+  }
+  if (st.slotHas) scanPushSlot(st.slotPt);
+  st.slotHas = true;
+  st.slotNo = slot;
+  st.slotPt = st.pt;
+}
+
+static void scanApplyStringValue(ScanState& st, const char* s) {
+  if (st.inPoint && st.depth == st.pointDepth && !strcmp(st.valueKey, "ts")) {
+    strncpy(st.pt.iso, s, sizeof(st.pt.iso) - 1);
+    st.pt.iso[sizeof(st.pt.iso) - 1] = 0;
+  } else if (st.depth == 1 && !st.seenIngest
+             && (!strcmp(st.valueKey, "last_ingest_at") || !strcmp(st.valueKey, "exported_at"))) {
+    shortIngest(s, gSnap.ingestShort, sizeof(gSnap.ingestShort));
+    st.seenIngest = true;
+  } else if (st.sourcesDepth >= 0 && st.depth == st.sourcesDepth + 1 && st.srcIdx >= 0) {
+    if (!strcmp(st.valueKey, "origin")) {
+      shortOrigin(s, st.pt.origin[st.srcIdx], sizeof(st.pt.origin[0]));
+    } else if (!strcmp(st.valueKey, "error")) {
+      st.pt.hasError[st.srcIdx] = true;
+    }
+  }
+}
+
+static void scanApplyNumber(ScanState& st, double v) {
+  if (st.inPoint && st.depth == st.pointDepth && !strcmp(st.valueKey, "ts_epoch")) {
+    st.pt.epoch = (long)v;
+    st.pt.hasEpoch = true;
+  } else if (st.sourcesDepth >= 0 && st.depth == st.sourcesDepth + 1 && st.srcIdx >= 0) {
+    if (!strcmp(st.valueKey, "used_weekly_pct")) {
+      st.pt.weekly[st.srcIdx] = (float)v;
+      st.pt.hasWeekly[st.srcIdx] = true;
+    } else if (!strcmp(st.valueKey, "used_5h_pct")) {
+      st.pt.used5h[st.srcIdx] = (float)v;
+      st.pt.has5h[st.srcIdx] = true;
+    } else if (!strcmp(st.valueKey, "resets_weekly_at")) {
+      st.pt.resetWeek[st.srcIdx] = (long)v;
+    } else if (!strcmp(st.valueKey, "resets_5h_at")) {
+      st.pt.reset5h[st.srcIdx] = (long)v;
+    }
+  }
+}
+
+static void scanApplyLiteral(ScanState& st, const char* tok) {
+  if (st.sourcesDepth >= 0 && st.depth == st.sourcesDepth + 1 && st.srcIdx >= 0) {
+    if (!strcmp(st.valueKey, "ok")) {
+      st.pt.hasOk[st.srcIdx] = true;
+      st.pt.okFalse[st.srcIdx] = (strcmp(tok, "false") == 0);
+    }
+  }
+}
+
+static void scanOnColon(ScanState& st) {
+  strncpy(st.valueKey, st.pendingKey, sizeof(st.valueKey) - 1);
+  st.valueKey[sizeof(st.valueKey) - 1] = 0;
+  st.expectKey = false;
+  if (st.sourcesDepth >= 0 && st.depth == st.sourcesDepth) {
+    st.srcIdx = -1;
+    for (int i = 0; i < N_SOURCES; i++) {
+      if (!strcmp(st.pendingKey, SRC_KEYS[i])) { st.srcIdx = i; break; }
+    }
+    if (st.srcIdx >= 0) st.pt.present[st.srcIdx] = true;
+  }
+}
+
+static void scanFeed(ScanState& st, char c) {
+  switch (st.mode) {
+    case 0: {
+      if (c == ' ' || c == '\t' || c == '\n' || c == '\r') return;
+      if (c == '"') { st.mode = 1; st.bufLen = 0; return; }
+      if (c == '{') {
+        if (st.depth < 31) {
+          st.depth++;
+          st.nest[st.depth] = 1;
+        } else {
+          st.depth++;
+        }
+        st.expectKey = true;
+        if (st.pointsDepth >= 0 && st.depth == st.pointsDepth + 1 && !st.inPoint) {
+          st.inPoint = true;
+          st.pointDepth = st.depth;
+          st.pt = ScanPoint();
+        } else if (st.inPoint && !strcmp(st.valueKey, "sources")
+                   && st.depth == st.pointDepth + 1) {
+          st.sourcesDepth = st.depth;
+        }
+        return;
+      }
+      if (c == '}') {
+        if (st.inPoint && st.depth == st.pointDepth) {
+          scanApplyPoint(st);
+          st.inPoint = false;
+          st.pointDepth = -1;
+        } else if (st.sourcesDepth >= 0 && st.depth == st.sourcesDepth) {
+          st.sourcesDepth = -1;
+          st.srcIdx = -1;
+        } else if (st.sourcesDepth >= 0 && st.depth == st.sourcesDepth + 1) {
+          st.srcIdx = -1;
+        }
+        if (st.depth > 0) st.depth--;
+        st.expectKey = (st.depth > 0 && st.depth < 32 && st.nest[st.depth] == 1);
+        return;
+      }
+      if (c == '[') {
+        if (st.depth < 31) {
+          st.depth++;
+          st.nest[st.depth] = 0;
+        } else {
+          st.depth++;
+        }
+        st.expectKey = false;
+        if (st.pointsDepth < 0 && !strcmp(st.valueKey, "points"))
+          st.pointsDepth = st.depth;
+        return;
+      }
+      if (c == ']') {
+        if (st.depth > 0) st.depth--;
+        if (st.pointsDepth >= 0 && st.depth < st.pointsDepth) st.pointsDepth = -1;
+        st.expectKey = (st.depth > 0 && st.depth < 32 && st.nest[st.depth] == 1);
+        return;
+      }
+      if (c == ':') { scanOnColon(st); return; }
+      if (c == ',') {
+        st.valueKey[0] = 0;
+        st.expectKey = (st.depth > 0 && st.depth < 32 && st.nest[st.depth] == 1);
+        return;
+      }
+      if (c == '-' || (c >= '0' && c <= '9')) {
+        st.mode = 4;
+        st.bufLen = 0;
+        st.buf[st.bufLen++] = c;
+        return;
+      }
+      if (c >= 'a' && c <= 'z') {
+        st.mode = 5;
+        st.bufLen = 0;
+        st.buf[st.bufLen++] = c;
+        return;
+      }
+      return;
+    }
+    case 1: {
+      if (c == '\\') { st.mode = 2; return; }
+      if (c == '"') {
+        st.mode = 0;
+        st.buf[st.bufLen] = 0;
+        if (st.expectKey) {
+          strncpy(st.pendingKey, st.buf, sizeof(st.pendingKey) - 1);
+          st.pendingKey[sizeof(st.pendingKey) - 1] = 0;
+        } else {
+          scanApplyStringValue(st, st.buf);
+        }
+        return;
+      }
+      if (st.bufLen < sizeof(st.buf) - 1) st.buf[st.bufLen++] = c;
+      return;
+    }
+    case 2: {
+      if (c == 'u') { st.mode = 3; st.uniN = 0; return; }
+      st.mode = 1;
+      char m = c;
+      if (c == 'n') m = '\n';
+      else if (c == 't') m = '\t';
+      else if (c == 'r') m = '\r';
+      if (st.bufLen < sizeof(st.buf) - 1) st.buf[st.bufLen++] = m;
+      return;
+    }
+    case 3: {
+      if (st.uniN < 4) st.uniHex[st.uniN++] = c;
+      if (st.uniN == 4) {
+        st.uniHex[4] = 0;
+        long cp = strtol(st.uniHex, nullptr, 16);
+        st.mode = 1;
+        if (cp > 0 && cp < 128 && st.bufLen < sizeof(st.buf) - 1)
+          st.buf[st.bufLen++] = (char)cp;
+      }
+      return;
+    }
+    case 4: {
+      if (c == ',' || c == '}' || c == ']' || c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+        st.mode = 0;
+        st.buf[st.bufLen] = 0;
+        scanApplyNumber(st, strtod(st.buf, nullptr));
+        scanFeed(st, c);
+        return;
+      }
+      if (st.bufLen < sizeof(st.buf) - 1) st.buf[st.bufLen++] = c;
+      return;
+    }
+    case 5: {
+      if (c == ',' || c == '}' || c == ']' || c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+        st.mode = 0;
+        st.buf[st.bufLen] = 0;
+        scanApplyLiteral(st, st.buf);
+        scanFeed(st, c);
+        return;
+      }
+      if (st.bufLen < sizeof(st.buf) - 1) st.buf[st.bufLen++] = c;
+      return;
+    }
+  }
+}
+
+static void scanFinish(ScanState& st) {
+  if (st.slotHas) scanPushSlot(st.slotPt);
+  gSnap.pointCount = (int)st.pointCount;
+  long lastEp = st.last.epoch;
+  long cutoff = (lastEp > 100000) ? lastEp - TREND_WINDOW_SEC : 0;
+  int ti = 0;
+  for (int i = 0; i < gScanRingN && ti < TREND_N; i++) {
+    const TrendSlot& s = gScanRing[(gScanRingHead + i) % TREND_N];
+    if (s.epoch < cutoff) continue;
+    gSnap.trendTs[ti] = s.epoch;
+    if (ti == 0) {
+      if (s.md[0]) snprintf(gSnap.trendStartLbl, sizeof(gSnap.trendStartLbl), "%s", s.md);
+      else labelFromIsoOrEpoch("", s.epoch, gSnap.trendStartLbl, sizeof(gSnap.trendStartLbl));
+    }
+    if (s.md[0]) snprintf(gSnap.trendEndLbl, sizeof(gSnap.trendEndLbl), "%s", s.md);
+    else labelFromIsoOrEpoch("", s.epoch, gSnap.trendEndLbl, sizeof(gSnap.trendEndLbl));
+    for (int k = 0; k < N_SOURCES; k++) {
+      gSnap.trend[k][ti] = s.remain[k];
+      gSnap.trendResetWeek[k][ti] = s.resetWeek[k];
+    }
+    ti++;
+  }
+  gSnap.trendN = ti;
+
+  for (int i = 0; i < N_SOURCES; i++) {
+    if (!st.last.present[i]) continue;
+    SourceUi& dst = gSnap.src[i];
+    dst.present = true;
+    dst.ok = sourceScanOk(st.last, i);
+    strncpy(dst.origin, st.last.origin[i], sizeof(dst.origin) - 1);
+    dst.origin[sizeof(dst.origin) - 1] = 0;
+    dst.remainWeek = st.last.hasWeekly[i] ? remainFromUsed(st.last.weekly[i]) : -1.0f;
+    dst.remain5h = st.last.has5h[i] ? remainFromUsed(st.last.used5h[i]) : -1.0f;
+    dst.resetWeek = st.last.resetWeek[i];
+    dst.reset5h = st.last.reset5h[i];
+  }
+  gSnap.valid = (st.pointCount > 0);
+}
+
+static void snapReset() {
+  gSnap.valid = false;
+  gSnap.pointCount = 0;
+  gSnap.trendN = 0;
+  gSnap.ingestShort[0] = 0;
+  for (int i = 0; i < N_SOURCES; i++) {
+    gSnap.src[i].ok = false;
+    gSnap.src[i].present = false;
+    gSnap.src[i].remainWeek = -1;
+    gSnap.src[i].remain5h = -1;
+    gSnap.src[i].resetWeek = 0;
+    gSnap.src[i].reset5h = 0;
+    gSnap.src[i].origin[0] = 0;
+    for (int j = 0; j < TREND_N; j++) {
+      gSnap.trend[i][j] = -1;
+      gSnap.trendResetWeek[i][j] = 0;
+    }
+  }
+  for (int j = 0; j < TREND_N; j++) gSnap.trendTs[j] = 0;
+  gSnap.trendStartLbl[0] = 0;
+  gSnap.trendEndLbl[0] = 0;
+}
+
+static bool parseStream(NetworkClient& stream, int contentLen) {
+  snapReset();
+  scanRingClear();
+  static ScanState st;
+  st = ScanState();
+
+  uint8_t chunk[512];
+  size_t total = 0;
+  uint32_t lastData = millis();
+  const uint32_t stallMs = 15000;
+  while (contentLen < 0 || (int)total < contentLen) {
+    int avail = stream.available();
+    if (avail <= 0) {
+      if (!stream.connected()) break;
+      if (millis() - lastData > stallMs) break;
+      delay(2);
+      continue;
+    }
+    size_t want = sizeof(chunk);
+    if ((size_t)avail < want) want = (size_t)avail;
+    if (contentLen >= 0) {
+      size_t left = (size_t)contentLen - total;
+      if (left < want) want = left;
+    }
+    int rd = stream.readBytes((char*)chunk, want);
+    if (rd <= 0) {
+      if (!stream.connected()) break;
+      if (millis() - lastData > stallMs) break;
+      continue;
+    }
+    lastData = millis();
+    for (int k = 0; k < rd; k++) scanFeed(st, (char)chunk[k]);
+    total += (size_t)rd;
+  }
+  scanFinish(st);
+  Serial.printf("poll: stream scanned %u bytes, pts=%d trend=%d\n",
+                (unsigned)total, gSnap.pointCount, gSnap.trendN);
+  if (total == 0) {
+    snprintf(gLastErr, sizeof(gLastErr), "empty body");
+    return false;
+  }
+  return true;
 }
 
 // ---- fetch ----
@@ -375,98 +722,37 @@ static bool triggerUpstreamRefresh() {
   return code == 200;
 }
 
-static bool parsePayload(const String& payload) {
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, payload);
-  if (err) {
-    snprintf(gLastErr, sizeof(gLastErr), "json %s", err.c_str());
+static bool httpFetchParse(const char* tag) {
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(12);
+  HTTPClient http;
+  http.setConnectTimeout(15000);
+  http.setTimeout(30000);
+  http.useHTTP10(true);
+  if (!http.begin(client, DATA_URL)) {
+    gLink = LinkState::HttpError;
+    snprintf(gLastErr, sizeof(gLastErr), "begin fail");
+    Serial.printf("%s: begin fail\n", tag);
     return false;
   }
-
-  JsonArray points = doc["points"].as<JsonArray>();
-  int nPts = points.size();
-  gSnap.pointCount = nPts;
-  shortIngest(doc["last_ingest_at"] | doc["exported_at"] | "", gSnap.ingestShort, sizeof(gSnap.ingestShort));
-
-  for (int i = 0; i < N_SOURCES; i++) {
-    gSnap.src[i].ok = false;
-    gSnap.src[i].present = false;
-    gSnap.src[i].remainWeek = -1;
-    gSnap.src[i].remain5h = -1;
-    gSnap.src[i].resetWeek = 0;
-    gSnap.src[i].reset5h = 0;
-    gSnap.src[i].origin[0] = 0;
-    for (int j = 0; j < TREND_N; j++) {
-      gSnap.trend[i][j] = -1;
-      gSnap.trendResetWeek[i][j] = 0;
-    }
+  int code = http.GET();
+  if (code != 200) {
+    snprintf(gLastErr, sizeof(gLastErr), "HTTP %d", code);
+    gLink = LinkState::HttpError;
+    Serial.printf("%s: HTTP %d\n", tag, code);
+    http.end();
+    return false;
   }
-  for (int j = 0; j < TREND_N; j++) gSnap.trendTs[j] = 0;
-  gSnap.trendN = 0;
-  gSnap.trendStartLbl[0] = 0;
-  gSnap.trendEndLbl[0] = 0;
-
-  if (nPts <= 0) {
-    gSnap.valid = false;
-    return true;
+  int sz = http.getSize();
+  Serial.printf("%s: HTTP 200 content-length=%d\n", tag, sz);
+  bool ok = parseStream(http.getStream(), sz);
+  http.end();
+  if (!ok) {
+    gLink = LinkState::ParseError;
+    Serial.printf("%s: parse error\n", tag);
+    return false;
   }
-
-  const char* keys[N_SOURCES] = {"claude", "codex:chihyi", "codex:Alston", "grok", "ollama"};
-
-  // last point → current UI
-  JsonObject last = points[nPts - 1].as<JsonObject>();
-  JsonObject sources = last["sources"].as<JsonObject>();
-  if (sources.isNull()) {
-    gSnap.valid = false;
-    return true;
-  }
-  for (int i = 0; i < N_SOURCES; i++) {
-    JsonObject s = sources[keys[i]].as<JsonObject>();
-    if (s.isNull()) continue;
-    fillSourceFromJson(gSnap.src[i], s);
-  }
-
-  // trend window: recent 10 days on a TREND_GRID_SEC grid; cloud points denser
-  // than the grid are downsampled to the last point of each slot, keeping reset
-  // anchors visible even when daily sampling density varies a lot.
-  int start = 0;
-  long lastEpoch = pointEpoch(points[nPts - 1].as<JsonObject>());
-  if (lastEpoch > 100000) {
-    long cutoff = lastEpoch - TREND_WINDOW_SEC;
-    while (start < nPts && pointEpoch(points[start].as<JsonObject>()) < cutoff) start++;
-  }
-
-  int ti = 0;
-  for (int pi = start; pi < nPts; pi++) {
-    JsonObject pt = points[pi].as<JsonObject>();
-    long ep = pointEpoch(pt);
-    if (ep <= 100000) continue;
-    long slot = ep / TREND_GRID_SEC;
-    int nxt = pi + 1;
-    while (nxt < nPts && pointEpoch(points[nxt].as<JsonObject>()) <= 100000) nxt++;
-    if (nxt < nPts && pointEpoch(points[nxt].as<JsonObject>()) / TREND_GRID_SEC == slot)
-      continue;  // superseded later within the same grid slot
-    if (ti >= TREND_N) break;
-    gSnap.trendTs[ti] = ep;
-    if (ti == 0) labelFromPoint(pt, gSnap.trendStartLbl, sizeof(gSnap.trendStartLbl));
-    labelFromPoint(pt, gSnap.trendEndLbl, sizeof(gSnap.trendEndLbl));
-    JsonObject srcs = pt["sources"].as<JsonObject>();
-    for (int i = 0; i < N_SOURCES; i++) {
-      if (srcs.isNull()) { gSnap.trend[i][ti] = -1; continue; }
-      JsonObject s = srcs[keys[i]].as<JsonObject>();
-      if (s.isNull() || !sourceJsonOk(s) || s["used_weekly_pct"].isNull()) {
-        gSnap.trend[i][ti] = -1;
-        continue;
-      }
-      float rem = remainFromUsed(s["used_weekly_pct"]);
-      gSnap.trend[i][ti] = (int8_t)(rem + 0.5f);
-      gSnap.trendResetWeek[i][ti] = s["resets_weekly_at"].isNull() ? 0 : s["resets_weekly_at"].as<long>();
-    }
-    ti++;
-  }
-  gSnap.trendN = ti;
-
-  gSnap.valid = true;
   return true;
 }
 
@@ -477,76 +763,22 @@ static bool pollData() {
     return false;
   }
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  client.setTimeout(12);
+  if (!httpFetchParse("poll")) return false;
 
-  HTTPClient http;
-  http.setConnectTimeout(10000);
-  http.setTimeout(12000);
-  if (!http.begin(client, DATA_URL)) {
-    gLink = LinkState::HttpError;
-    snprintf(gLastErr, sizeof(gLastErr), "begin fail");
-    return false;
-  }
-
-  int code = http.GET();
-  if (code != 200) {
-    snprintf(gLastErr, sizeof(gLastErr), "HTTP %d", code);
-    gLink = LinkState::HttpError;
-    Serial.printf("poll: HTTP %d\n", code);
-    http.end();
-    return false;
-  }
-
-  String body = http.getString();
-  http.end();
-  Serial.printf("poll: HTTP 200 body=%d bytes\n", (int)body.length());
-
-  if (!parsePayload(body)) {
-    gLink = LinkState::ParseError;
-    Serial.println("poll: parse error");
-    return false;
-  }
   if (!gSnap.valid || gSnap.pointCount <= 0) {
-    // /data returned empty — upstream cache may be stale. Trigger a refresh
-    // then retry once after a short delay.
     Serial.println("poll: 0 points, triggering upstream refresh");
     triggerUpstreamRefresh();
     delay(TRIGGER_RETRY_MS);
-
-    // Re-fetch /data
-    WiFiClientSecure client2;
-    client2.setInsecure();
-    client2.setTimeout(12);
-    HTTPClient http2;
-    http2.setConnectTimeout(10000);
-    http2.setTimeout(12000);
-    if (http2.begin(client2, DATA_URL)) {
-      int code2 = http2.GET();
-      if (code2 == 200) {
-        String body2 = http2.getString();
-        Serial.printf("poll retry: HTTP 200 body=%d bytes\n", (int)body2.length());
-        if (parsePayload(body2) && gSnap.valid && gSnap.pointCount > 0) {
-          http2.end();
-          gLink = LinkState::Online;
-          gLastErr[0] = 0;
-          Serial.printf("poll ok (after trigger): pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f\n",
-                        gSnap.pointCount, gSnap.trendN,
-                        gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
-                        gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
-                        gSnap.src[4].remainWeek);
-          return true;
-        }
-        Serial.printf("poll retry: still empty (pts=%d)\n", gSnap.pointCount);
-      } else {
-        Serial.printf("poll retry: HTTP %d\n", code2);
-      }
-      http2.end();
-    } else {
-      Serial.println("poll retry: begin fail");
+    if (httpFetchParse("poll retry") && gSnap.valid && gSnap.pointCount > 0) {
+      gLink = LinkState::Online;
+      gLastErr[0] = 0;
+      Serial.printf("poll ok (after trigger): pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f\n",
+                    gSnap.pointCount, gSnap.trendN,
+                    gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
+                    gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
+                    gSnap.src[4].remainWeek);
+      return true;
     }
-
     gLink = LinkState::Empty;
     snprintf(gLastErr, sizeof(gLastErr), "0 points");
     return false;

@@ -5,6 +5,7 @@
 | 檔案 | 內容形態 | Agent 何時需要 | 讀取順序 |
 | --- | --- | --- | --- |
 | `aiusage_home.ino` | 大型單檔 Arduino sketch，含資料、網路、按鍵與 P0–P6 繪製 | 任何主儀表行為、穩定度或功耗變更 | 先找對應區段，再讀相關上下文 |
+| `usage_scan.h` | `/data` 串流掃描器的結構體（ScanPoint／ScanState） | 修改 JSON 解析或 Arduino 原型可見性 | 與 `aiusage_home.ino` 的 streaming 區段一起讀 |
 | `README.md` | 人類操作、頁面與配網說明 | 需要確認目前上板行為或驗收步驟 | 先讀摘要與操作表 |
 | `secrets.h.example` | 可提交的 Wi-Fi 設定樣板 | 需要寫死 Wi-Fi 或檢查編譯設定 | 只讀欄位，不填入真實密碼 |
 | `secrets.h` | 本機 ignored 設定，可能含敏感憑證 | 只在本機編譯／配網故障時按需確認 | 不列入版本控制，不在回報貼出內容 |
@@ -13,7 +14,8 @@
 
 | 項目 | 一句話說明 | 觸發條件 | 關鍵輸入／輸出 | ⚠️ 注意事項 |
 | --- | --- | --- | --- | --- |
-| `aiusage_home.ino` | 主程式把衍生 usage JSON 轉成 P0–P6 單色 RLCD 儀表。 | 修改 P0–P6、資料解析、Wi-Fi、BOOT、電池或刷新。 | 輸入 `/data`、NTP、GPIO0、GPIO4；輸出 ST7305 畫面與 Serial。 | 先核對 Hub 的固定 GPIO、1bpp buffer、旋轉與功耗規則；P2–P6 是單來源圖表，不直接搬 Web UI。 |
+| `aiusage_home.ino` | 主程式把衍生 usage JSON 轉成 P0–P6 單色 RLCD 儀表。 | 修改 P0–P6、資料解析、Wi-Fi、BOOT、電池或刷新。 | 輸入 `/data`、NTP、GPIO0、GPIO4；輸出 ST7305 畫面與 Serial。 | 先核對 Hub 的固定 GPIO、1bpp buffer、旋轉與功耗規則；P2–P6 是單來源圖表，不直接搬 Web UI。`/data` 以串流掃描，禁止 `getString()` 整包讀入。 |
+| `usage_scan.h` | 串流掃描器型別，讓 Arduino 自動原型看得到 ScanState。 | 增減掃描欄位或來源鍵。 | 輸入 `N_SOURCES`／`TREND_N`；輸出結構定義。 | 必須在 `#define N_SOURCES` 之後 include；不要把型別只放在 .ino 後段。 |
 | `README.md` | 定義目前可驗收的換頁、配網、刷新與預期畫面。 | 燒錄前確認操作，或變更後更新人類說明。 | 輸入板級設定與實機觀察；輸出操作步驟與驗收基準。 | 若實作與 README 不同，先確認實際行為，再同步文件；不要用 README 取代 schematic。 |
 | `secrets.h.example` | 提供不含真實憑證的覆寫欄位。 | 需要固定 SSID／密碼而不走 NVS 時。 | 輸入使用者自行填寫的本機值；輸出編譯期 macro。 | 真實 `secrets.h` 已 ignored，禁止提交或在 log／回報中暴露。 |
 | `secrets.h` | 本機私密設定，不是可移植的專案來源。 | 僅在編譯或配網診斷時確認是否存在。 | 輸入本機憑證；輸出給 sketch 的編譯設定。 | 不要建立索引內容摘要或複製其值；遺失時改用 WiFiManager。 |
@@ -21,6 +23,6 @@
 ## 主要區段路由
 
 - 固定常數與資料模型：檔案開頭的 pins、畫布、輪詢與頁面設定。
-- JSON 與網路：`parsePayload`、`pollData`、Wi-Fi／WiFiManager 區段。
+- JSON 與網路：`parseStream`／`httpFetchParse`、`pollData`、Wi-Fi／WiFiManager 區段。
 - 畫面：`renderCombined`、`renderTrend`、`renderSourceTrend` 與共用繪圖 primitive。
 - 互動與生命週期：`handleButton`、`setup`、`loop`。
