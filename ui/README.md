@@ -31,7 +31,7 @@ open ui/aiusage-wireframe.html
 
 | 頁 | 內容 |
 | --- | --- |
-| P0 Combined | 週剩餘 + bar、5h、建議一天額度、reset、pace 的五列橫排五源總覽 |
+| P0 Combined | 週剩餘 + bar、5h、建議一天額度、reset、五級節奏（VERY SLOW／SLOW／ON PACE／FAST／VERY FAST）的五列橫排五源總覽 |
 | P1 Trend | 多源剩餘折線（五種線型區分）+ 100/7 輔助虛線 |
 | P2–P6 Source Trend | Claude、Chihyi、Alston、Grok、Ollama 各自一頁；最近 10 天剩餘曲線、reset/due 標記與提前 reset 截斷的理想斜率（電腦端原型見 `../web/aiusage-analysis.html`） |
 | States | no data / partial / offline |

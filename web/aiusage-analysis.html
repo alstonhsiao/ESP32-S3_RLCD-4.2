@@ -16,7 +16,9 @@
       --grid: #e9edf2;
       --accent: #1f6feb;
       --danger: #c83b4b;
+      --danger-strong: #8c1f2c;
       --warning: #b56a00;
+      --warning-strong: #7a4a00;
       --ok: #18794e;
       --claude: #c4512d;
       --codex: #2672c8;
@@ -84,6 +86,8 @@
     .status-label.ok { color: var(--ok); }
     .status-label.fast { color: var(--danger); }
     .status-label.slow { color: var(--warning); }
+    .status-label.very-fast { color: var(--danger-strong); }
+    .status-label.very-slow { color: var(--warning-strong); }
     .status-label.na { color: var(--muted); }
     .panel-stats { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px 12px; margin-top: 5px; color: var(--muted); }
     .panel-stats span { white-space: nowrap; }
@@ -297,10 +301,10 @@
         const anchor = eventBefore && eventBefore.time >= observations[0].time - 45 * DAY ? 0 : visible[0].used;
         const target = Number.isFinite(nextReset) && nextReset > cycleStart ? (100 - anchor) / ((nextReset - cycleStart) / DAY) : null;
         let status = "na";
-        if (Number.isFinite(slope) && Number.isFinite(target) && target > 0) { const tolerance = state.tolerance / 100; status = slope > target * (1 + tolerance) ? "fast" : slope < target * (1 - tolerance) ? "slow" : "ok"; }
+        if (Number.isFinite(slope) && Number.isFinite(target) && target > 0) { const tolerance = state.tolerance / 100, severeTolerance = 2 * tolerance; status = slope > target * (1 + severeTolerance) ? "very-fast" : slope > target * (1 + tolerance) ? "fast" : slope < target * (1 - severeTolerance) ? "very-slow" : slope < target * (1 - tolerance) ? "slow" : "ok"; }
         return { visible, range, last, slope, target, nextReset, status, cycleStart, eventBefore, slopeReady };
       }
-      function statusText(status) { return { fast: "FAST", slow: "SLOW", ok: "OK", na: "N/A" }[status] || "N/A"; }
+      function statusText(status) { return { "very-fast": "VERY FAST", fast: "FAST", ok: "ON PACE", slow: "SLOW", "very-slow": "VERY SLOW", na: "N/A" }[status] || "N/A"; }
       function createSvgElement(tag, attributes = {}) { const element = document.createElementNS("http://www.w3.org/2000/svg", tag); Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value))); return element; }
       function addText(parent, x, y, text, className = "axis-text", anchor = "start") { const element = createSvgElement("text", { x, y, class: className, "text-anchor": anchor }); element.textContent = text; parent.appendChild(element); return element; }
       function pathFor(points, xScale, yScale) { return points.map((point, index) => `${index ? "L" : "M"}${xScale(point.time).toFixed(2)},${yScale(remainingValue(point.used)).toFixed(2)}`).join(" "); }

@@ -53,6 +53,12 @@
 #define N_SOURCES 5
 #define PAGE_COUNT 7
 #define CHART_PAGE_BASE 2
+// P0 pace thresholds vs the ~100/7 (≈14.3) daily ideal: inner ring keeps the
+// historic 12/18 band; outer ring ≈ ±7pp (≈1.5 days of quota off pace).
+#define PACE_DAILY_FAST 12.0f
+#define PACE_DAILY_SLOW 18.0f
+#define PACE_DAILY_VFAST 7.0f
+#define PACE_DAILY_VSLOW 22.0f
 // Trend buffer: 20-min grid over the 10d window (720 slots). The stream
 // scanner downsamples denser cloud points by keeping the last point of each
 // slot, so resets older than ~2 days stay visible as R anchors.
@@ -60,7 +66,9 @@
 #define TREND_GRID_SEC (20L * 60L)
 #define TREND_WINDOW_SEC (10L * 86400L)
 #define MIN_SLOPE_WINDOW_SEC (6L * 3600L)
+// Pace ring 1 (inner, historic ±10% relative) and ring 2 (severe, ±20%).
 #define SLOPE_TOLERANCE 0.10f
+#define SLOPE_TOLERANCE_SEVERE 0.20f
 // Reset markers are sparse (a handful per week); no need to scale with TREND_N.
 #define TREND_EVENT_MAX 32
 
@@ -265,11 +273,15 @@ static float dailyBudgetPct(const SourceUi& s) {
 
 // Pace vs ~100/7 daily (ASCII only — U8g2 Latin fonts).
 // SLOW = under-using (high daily budget left), FAST = over-using.
+// Five levels (aligned with usage-web 2026-09-01): inner ring keeps the
+// historic ±4pp band, outer ring ~1.5 days of quota off the weekly ideal.
 static const char* paceLabel(float daily) {
   if (daily < 0.0f) return "--";
-  if (daily > 18.0f) return "SLOW";
-  if (daily < 12.0f) return "FAST";
-  return "OK";
+  if (daily > PACE_DAILY_VSLOW) return "VERY SLOW";
+  if (daily > PACE_DAILY_SLOW) return "SLOW";
+  if (daily < PACE_DAILY_VFAST) return "VERY FAST";
+  if (daily < PACE_DAILY_FAST) return "FAST";
+  return "ON PACE";
 }
 
 static void shortOrigin(const char* origin, char* out, size_t n) {
@@ -1186,9 +1198,11 @@ static void renderSourceTrend(int srcIdx) {
 
   const char* pace = "--";
   if (actual >= 0.0f && target > 0.0f) {
-    if (actual > target * (1.0f + SLOPE_TOLERANCE)) pace = "FAST";
+    if (actual > target * (1.0f + SLOPE_TOLERANCE_SEVERE)) pace = "VERY FAST";
+    else if (actual > target * (1.0f + SLOPE_TOLERANCE)) pace = "FAST";
+    else if (actual < target * (1.0f - SLOPE_TOLERANCE_SEVERE)) pace = "VERY SLOW";
     else if (actual < target * (1.0f - SLOPE_TOLERANCE)) pace = "SLOW";
-    else pace = "OK";
+    else pace = "ON PACE";
   } else if (latestEvent >= 0 && dataEnd - cycleStart < MIN_SLOPE_WINDOW_SEC) {
     pace = "RESET";
   }

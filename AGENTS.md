@@ -134,6 +134,10 @@ Type-C 或 18650 插拔時勿以螢幕受力；文件不得鼓勵暴力拆裝或
 
 - **Codex 多帳號：`codex` key 拆分為 `codex:chihyi` + `codex:Alston`，韌體從 4 源擴充為 5 源**（功能擴充，非事故）：usage-web `/data` 不再返回 `codex`，改返回 `codex:chihyi`（原帳號 chihyi.a@gmail.com）與 `codex:Alston`（新增 alstonh@gmail.com）。韌體硬編碼的 `const char* keys[4]` 會找不到 `codex` 而靜默顯示 missing。修復：新增 `N_SOURCES=5` 常數取代所有寫死的 4；`keys` 改為 `{"claude","codex:chihyi","codex:Alston","grok","ollama"}`；`SourceUi src[5]` 新增 CHIHYI/ALSTON（顯示名稱區分兩個 Codex 帳號）；`PAGE_COUNT=7`（P0+P1+5 源頁）；P0 從 2×2 grid 改為五列橫排（每列 44px，名稱+origin 在上、大字 remain%+bar+5h/day/week-reset 在下）；P1 新增第 5 種線型（style 4 = thin dashed）與 legend 條目；Serial log 改為 `C/H/A/G/O`。編譯通過無新 warning。待實機驗收 P0 五列間距與 P1 五線可讀性。
 
+### 已解決事項（2026-09-01）
+
+- **節奏標籤五級化 + 英文化**（功能對齊，非事故）：上游 keyboardMaestro 的 usage-web 已改五級英文標籤（gap = 週剩餘% − 7 天理想進度剩餘%，±3pp 內 ON PACE；±3~±10pp SLOW/FAST；超過 ±10pp VERY SLOW/VERY FAST）。本專案三套 pace 實作（P0 日額對比 100/7、P2–P6 斜率對比、web 原型）與 wireframe 靜態字、五份文件一併對齊，但保留各自既有判斷式（未改成 gap 公式，因本專案裝置語義是「消耗斜率 vs 理想斜率」與「建議日額 vs 100/7」，非 usage-web 的剩餘 gap）。最終值：標籤 `VERY SLOW / SLOW / ON PACE / FAST / VERY FAST`（P0 內圈 12/18 維持、外圈 7/22；斜率式內圈 ±10% 維持、外圈 ±20%，web 原型外圈 = 內圈輸入值×2）；`RESET`、`--`、`N/A` 退化狀態保留；web 原型補 `.status-label.very-slow/.very-fast` CSS（深化色 `--warning-strong`/`--danger-strong`）。韌體經實機燒錄 + Serial 驗證；web 原型以 Playwright 對 tolerance 輸入做 0–60% 掃描，標籤翻轉點符合「外圈=內圈×2、嚴格不等式」。反例：wireframe 的範例標籤要跟著公式重算，不能只換字（P5 GROK 18.1 vs 14.3 = 1.27×，落在 ±20% 外圈，正確標籤是 VERY FAST 而非 FAST）。
+
 ### 路徑檢查與瘦身協議
 
 - 路徑檢查：例行維護時，逐一驗證 Hub 與各 `INDEX.md` 中提到的檔案路徑是否存在；失效路徑立即修正，無法確定則標 `NEED_REVIEW`。

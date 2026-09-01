@@ -17,7 +17,7 @@
 
 ## 頁面定位
 
-- P0 Combined：搜尋 `P0 · Combined`，確認週剩餘、5h、day%、reset 與 pace 的五列橫排版面。
+- P0 Combined：搜尋 `P0 · Combined`，確認週剩餘、5h、day%、reset 與五級節奏（VERY SLOW／SLOW／ON PACE／FAST／VERY FAST）的五列橫排版面。
 - P1 Trend：搜尋 `P1 · Multi-source Trend`，確認最近 10 天、五種線型與 100/7 輔助線。
 - P2–P6：搜尋各來源 `Source Trend`；reset/due 與提前 reset 截斷斜率可對照 `../web/aiusage-analysis.html`（該原型仍為四源）。
 - Error／Partial：搜尋 `Error / Partial states`，確認空資料重試失敗與部分來源失敗仍可讀。

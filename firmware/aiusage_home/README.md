@@ -15,7 +15,7 @@ BOOT 是板上靠近 USB 的 **BOOT** 側鍵（GPIO0），不是 PWR。
 
 | 頁 | 內容 |
 | --- | --- |
-| **P0 Combined** | 五來源橫列總覽：週剩餘 % + bar、5h、建議一天額度、週 reset、SLOW/OK/FAST |
+| **P0 Combined** | 五來源橫列總覽：週剩餘 % + bar、5h、建議一天額度、週 reset、五級節奏 VERY SLOW／SLOW／ON PACE／FAST／VERY FAST |
 | **P1 Trend** | 最近 10 天、最多 720 點（20 分鐘一格，較密雲端點自動降取樣）剩餘折線（五源線型不同）+ 100/7 輔助虛線 |
 | **P2–P6 Source Trend** | Claude / Chihyi / Alston / Grok / Ollama 各自一頁；最近 10 天剩餘曲線、實際時間軸、reset 標記、due/reset 理想斜率；提前 reset 時截斷理想線 |
 
@@ -28,8 +28,8 @@ BOOT 是板上靠近 USB 的 **BOOT** 側鍵（GPIO0），不是 PWR。
 | 刷新 | 資料 **15 分鐘**、自動翻頁 **5 分鐘**（P0–P6 一輪約 35 分鐘）、reset 倒數／電量在**分鐘變時重畫**；P2–P6 只使用最新 10 天歷史點 |
 | Wi‑Fi | **間歇**：只在拉 `/data`（或配網）時連線，結束後 `WIFI_OFF`；底欄 `live`=連線中、`idle`=有資料但 radio 關 |
 | 手動更新 | 短按換頁後若 10 秒內沒有再按，額外開 Wi-Fi 拉取一次並短暫顯示 `UPD`；連續翻頁只在最後一次按鍵後觸發一次 |
-| P0 語意 | `DAY% = 週剩餘% ÷ 剩餘天`；% 皆為剩餘；無 5h 窗顯示 `--` |
-| P2–P6 語意 | Y 軸為剩餘 %；理想線由每個 reset 到該週期 due/reset 計算；提前 reset 不強制拉到 0%；reset 後資料不足 6 小時／3 點時實測斜率顯示 `--`。10 天視窗以 20 分鐘網格降取樣（最多 720 點），確保較早的 reset 也在窗內、理想線可從真實 reset 錨點滿高畫出 |
+| P0 語意 | `DAY% = 週剩餘% ÷ 剩餘天`；% 皆為剩餘；無 5h 窗顯示 `--`；節奏對比 `100/7`：內圈 12–18，超過 22 為 VERY SLOW、低於 7 為 VERY FAST |
+| P2–P6 語意 | Y 軸為剩餘 %；理想線由每個 reset 到該週期 due/reset 計算；提前 reset 不強制拉到 0%；reset 後資料不足 6 小時／3 點時實測斜率顯示 `--`。節奏以實測斜率對比理想斜率：內圈 ±10% 相對容差、超過 ±20% 為 VERY FAST／VERY SLOW。10 天視窗以 20 分鐘網格降取樣（最多 720 點），確保較早的 reset 也在窗內、理想線可從真實 reset 錨點滿高畫出 |
 | 時鐘 | NTP（UTC+8） |
 | 電量 | GPIO4 ADC（有 18650 才顯示） |
 | WiFi | `secrets.h` 優先；否則 **WiFiManager**（會記住上次配網） |

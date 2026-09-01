@@ -18,6 +18,7 @@
 | 來源 | `claude`、`codex:chihyi`、`codex:Alston`、`grok`、`ollama` |
 | 週數值 | 週剩餘 % = `100 − used_weekly_pct` |
 | 5h 數值 | 有滾動窗資料才顯示；沒有時顯示 `--` |
+| 節奏標籤 | 五級英文（2026-09-01 起與 usage-web 對齊）：`VERY SLOW / SLOW / ON PACE / FAST / VERY FAST`；退化狀態 `RESET`、`--`／`N/A` 保留 |
 | 上游 | 本機 ingest 處理敏感資料，裝置只接收衍生資料 |
 
 不要把彩色 Web UI 原樣搬到 RLCD。資料若繼續膨脹，優先讓 API 只回最新資料與有限歷史點，並保留離線／stale 狀態。
@@ -26,9 +27,9 @@
 
 | 頁面 | 目的 | 主要輸入／輸出 | 注意事項 |
 | --- | --- | --- | --- |
-| P0 Combined | 一眼比較五個來源的週、5h、每日建議額度與 reset | 五源週剩餘%、bar、5h、day%、reset、節奏、連線與電池狀態 | bar 表示剩餘比例；日額 = 週剩餘% ÷ 剩餘天；五列橫排，每列一源 |
+| P0 Combined | 一眼比較五個來源的週、5h、每日建議額度與 reset | 五源週剩餘%、bar、5h、day%、reset、節奏、連線與電池狀態 | bar 表示剩餘比例；日額 = 週剩餘% ÷ 剩餘天；五列橫排，每列一源；節奏以建議日額對比 `100/7`：內圈 12–18，外圈 7/22（嚴格不等式，越界即 VERY FAST／VERY SLOW） |
 | P1 Trend | 看近期週剩餘趨勢 | 有限歷史點、五種 1bpp 線型、輔助線 | 多線重疊時優先可讀性，並以 P2–P6 單源頁補足 |
-| P2–P6 Source Trend | 分別看 Claude／Chihyi／Alston／Grok／Ollama 最近 10 天週剩餘 | 單一來源剩餘曲線、reset、due/reset 理想線、斜率摘要 | 實際資料限制最近 10 天；提前 reset 時理想線在事件點截斷，reset 後重新由 100% 開始 |
+| P2–P6 Source Trend | 分別看 Claude／Chihyi／Alston／Grok／Ollama 最近 10 天週剩餘 | 單一來源剩餘曲線、reset、due/reset 理想線、斜率摘要 | 實際資料限制最近 10 天；提前 reset 時理想線在事件點截斷，reset 後重新由 100% 開始；節奏以實測斜率對比理想斜率：內圈 ±10% 相對容差，超過 ±20% 為 VERY FAST／VERY SLOW；斜率窗不足 6 小時顯示 `RESET`／`--` |
 | Error／Partial | 讓失敗狀態仍可讀 | 無資料、部分來源、重試與連線狀態 | 不得以白屏掩蓋 HTTP、Wi-Fi 或資料問題 |
 
 ## Wireframe 與參考實作
