@@ -78,6 +78,7 @@ Type-C 或 18650 插拔時勿以螢幕受力；文件不得鼓勵暴力拆裝或
 - 靜態畫面要避免無意義全屏刷新；儀表預設約 30–60 秒級更新，互動時才即時。連續 Wi-Fi、語音、高 FPS 動畫都要標註高耗電。
 - aiusage 的核心語義是「週剩餘 % = `100 − used_weekly_pct`」；不要在 RLCD 上原樣渲染彩色網頁。
 - 資料源是 `https://aiusage-web.zeabur.app/data`，背後為雲端 SQLite（Zeabur persistent volume，2026-08-16 起），由本機 `usage-history.db` upsert 累積。韌體在 `/data` 返回 0 points 時自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試一次；所有失敗路徑有 Serial 診斷輸出。
+  反例：不要假設雲端 `/data` 永遠有資料；韌體必須能處理空回應並自動恢復（2026-08-16 事故，完整經過見 `docs/power-and-progress.md`）。
 - `secrets.h` 可以在本機覆寫 Wi-Fi，但不得提交；只提交 `secrets.h.example`。
 
 ## 實作前檢查清單
@@ -122,21 +123,9 @@ Type-C 或 18650 插拔時勿以螢幕受力；文件不得鼓勵暴力拆裝或
 - 升格 = 在 Hub 對應規則後追加一行反例，以及 troubleshooting 條目編號。
 - 未升格的教訓留在 troubleshooting 檔即可，不要把 Hub 當事故簿。
 
-### 已解決事故（2026-08-16）
+### 開發與事故紀錄
 
-- **螢幕反覆沒資料**（同類發生多次 → 升格）：舊版雲端 `usage-web` 用檔案系統 JSON 快取（`history.json`），Zeabur 重新部署時清空 → `GET /data` 返回 `{"points":[]}` → 韌體直接放棄顯示，且所有失敗路徑無 Serial 輸出，無法診斷。修復：(1) 雲端改用 SQLite + persistent volume（keyboardmaestro 專案 `autousage/usage-web/db.js`）；(2) 韌體在 0 points 時自動 `POST /trigger` 觸發 KM 查詢 + sync 再重試；(3) 所有失敗路徑加 Serial 診斷。反例：不要假設雲端 `/data` 永遠有資料；韌體必須能處理空回應並自動恢復。
-
-### 已解決事項（2026-08-25）
-
-- **P2–P5 理想虛線各頁陡度不一**（單次設計缺陷，未升格）：`TREND_N=128` 在當時約 23 分鐘一點的取樣下只涵蓋最近約 2 天，視窗外的週期 reset 使 `drawTrendIdeal` 退化成「自窗起點剩餘值清零到 due」的半高平緩線；reset 恰在窗內的來源卻畫滿高 100%→due 線，兩種語義在同一組頁面混用且無標示（例：GROK 頁虛線特別平）。修復：`TREND_N` 擴為 720（10 天 × 20 分鐘格），`parsePayload` 對較密雲端點逐格保留最後一點做降取樣；reset 事件陣列另立 `TREND_EVENT_MAX=32` 不隨 `TREND_N` 放大；P1 多線繪製改串流逐段畫，避免 720 點座標陣列吃堆疊。實機 Serial 驗證 `poll ok … trend=270`，四源皆取得真實 R 錨點。反例：不要讓趨勢緩衝實際涵蓋遠小於標示（LAST 10D）的時間窗；依賴歷史錨點的功能會靜默退化。
-
-### 已解決事項（2026-08-26）
-
-- **Codex 多帳號：`codex` key 拆分為 `codex:chihyi` + `codex:Alston`，韌體從 4 源擴充為 5 源**（功能擴充，非事故）：usage-web `/data` 不再返回 `codex`，改返回 `codex:chihyi`（原帳號 chihyi.a@gmail.com）與 `codex:Alston`（新增 alstonh@gmail.com）。韌體硬編碼的 `const char* keys[4]` 會找不到 `codex` 而靜默顯示 missing。修復：新增 `N_SOURCES=5` 常數取代所有寫死的 4；`keys` 改為 `{"claude","codex:chihyi","codex:Alston","grok","ollama"}`；`SourceUi src[5]` 新增 CHIHYI/ALSTON（顯示名稱區分兩個 Codex 帳號）；`PAGE_COUNT=7`（P0+P1+5 源頁）；P0 從 2×2 grid 改為五列橫排（每列 44px，名稱+origin 在上、大字 remain%+bar+5h/day/week-reset 在下）；P1 新增第 5 種線型（style 4 = thin dashed）與 legend 條目；Serial log 改為 `C/H/A/G/O`。編譯通過無新 warning。待實機驗收 P0 五列間距與 P1 五線可讀性。
-
-### 已解決事項（2026-09-01）
-
-- **節奏標籤五級化 + 英文化**（功能對齊，非事故）：上游 keyboardMaestro 的 usage-web 已改五級英文標籤（gap = 週剩餘% − 7 天理想進度剩餘%，±3pp 內 ON PACE；±3~±10pp SLOW/FAST；超過 ±10pp VERY SLOW/VERY FAST）。本專案三套 pace 實作（P0 日額對比 100/7、P2–P6 斜率對比、web 原型）與 wireframe 靜態字、五份文件一併對齊，但保留各自既有判斷式（未改成 gap 公式，因本專案裝置語義是「消耗斜率 vs 理想斜率」與「建議日額 vs 100/7」，非 usage-web 的剩餘 gap）。最終值：標籤 `VERY SLOW / SLOW / ON PACE / FAST / VERY FAST`（P0 內圈 12/18 維持、外圈 7/22；斜率式內圈 ±10% 維持、外圈 ±20%，web 原型外圈 = 內圈輸入值×2）；`RESET`、`--`、`N/A` 退化狀態保留；web 原型補 `.status-label.very-slow/.very-fast` CSS（深化色 `--warning-strong`/`--danger-strong`）。韌體經實機燒錄 + Serial 驗證；web 原型以 Playwright 對 tolerance 輸入做 0–60% 掃描，標籤翻轉點符合「外圈=內圈×2、嚴格不等式」。反例：wireframe 的範例標籤要跟著公式重算，不能只換字（P5 GROK 18.1 vs 14.3 = 1.27×，落在 ±20% 外圈，正確標籤是 VERY FAST 而非 FAST）。
+2026-08-16 事故與 2026-08-25／08-26／09-01 的開發紀錄見 `docs/power-and-progress.md`「歷史決策紀錄（自 AGENTS.md 移入）」。
 
 ### 路徑檢查與瘦身協議
 
@@ -147,11 +136,11 @@ Type-C 或 18650 插拔時勿以螢幕受力；文件不得鼓勵暴力拆裝或
 
 ## 派工與停損
 
-1. 派工門檻：預估要讀超過 5 個檔案或 50KB、或需要掃整個目錄時，派 subagent，主對話只收結論；低於門檻自己做，不要為小事派工。
+1. 派工時機：只需要結論的大範圍搜尋（例如掃整個目錄找用法）可以派 subagent；需要在主對話交叉推理的比對（腳位、方向、規格衝突）自己讀。小型事實修改不派工。
 2. 派工三件套：每次派 subagent 必須寫明 (1) 目標與動機 (2) 驗收條件 (3) 回報格式——只回結論 + 檔案:行號，長產物落檔傳路徑。
 3. 停損線：同一子任務用同一種方法連錯兩次，停止重試；帶完整失敗軌跡（做了什麼、錯誤訊息、已排除什麼）回報使用者，不得換個小花樣試第三次。
 
-本專案的正例：要比較 schematic、PINOUT、HARDWARE-SPEC、主 sketch 與 wireframe 才能決定顯示方向與腳位時，檔案和目錄範圍已超過門檻，應派工並只收結論。
+本專案的正例：要在整個 `firmware/` 與 `ui/` 找出某個常數或頁面名稱的所有出處時，派工並只收「檔案:行號」清單。
 
 本專案的反例：只需確認某個 `INDEX.md` 的路徑或更新一個快速地圖連結時，先自行做，不應為小型事實修改派工。
 
