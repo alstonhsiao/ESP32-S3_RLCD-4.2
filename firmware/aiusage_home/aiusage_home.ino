@@ -12,7 +12,7 @@
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
- *   P0 Combined — 5 horizontal rows: remain% + 5h + day% + reset + week forecast
+ *   P0 Combined — 5 vertical columns: remain% + 5h + day% + reset + week forecast
  *   P1 Trend  — last 10d remain% polylines (5 series, distinct 1bpp styles)
  *   P2-P6    — one 10d remain% chart per source, reset-aware ideal slope
  * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes
@@ -1296,9 +1296,10 @@ static void renderSourceTrend(int srcIdx) {
   drawBottomBar("R=reset D=due");
 }
 
-// P0 — 5 rows. Name/pace baseline ty+12, metrics ty+25 at x=128,
-// remain + bar on the left at ty+34, forecast ty+39 at x=128. Bold names
-// and pace; 6x10 metrics/forecast. USD is an unused-value estimate.
+// P0 — selected layout D: five 76px columns on U8G2_R1 (400x300 / 1bpp).
+// Names at y=43, balance/bar y=78/88, pace y=109/123, forecast y=166/182,
+// 5H/D/W y=208/228/248. Content ends above the unchanged footer at y=258.
+// Layout only: minute redraw, polling, radio-off and prediction math unchanged.
 static void renderCombined() {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
@@ -1306,8 +1307,13 @@ static void renderCombined() {
 
   u8g2.setFont(u8g2_font_helvB12_tf);
   u8g2.drawStr(10, 18, "ALL DETAIL");
-  u8g2.setFont(u8g2_font_6x13_tf);
-  strRight(W - 12, 16, "REMAIN=100-USED");
+  struct tm clock;
+  char clockText[8] = "--:--";
+  if (haveLocalTime(&clock)) {
+    snprintf(clockText, sizeof(clockText), "%02d:%02d", clock.tm_hour, clock.tm_min);
+  }
+  // Leave room for the temporary UPD badge at x=372..399, y=0..11.
+  strRight(gShowUpdateBadge ? W - 36 : W - 12, 18, clockText);
   u8g2.drawHLine(8, 24, W - 16);
   u8g2.drawHLine(8, 25, W - 16);
 
@@ -1319,70 +1325,65 @@ static void renderCombined() {
     if (day[i] > best) { best = day[i]; bestIdx = i; }
   }
 
-  // Tops stay 45px apart. Separator at ty+43 sits under the forecast
-  // descent (ty+41) and above the next name (ty+46).
-  const int rowTop[N_SOURCES] = {30, 75, 120, 165, 210};
-  const int kForecastX = 128;
-
-  for (int i = 0; i < N_SOURCES - 1; i++) {
-    u8g2.drawHLine(8, rowTop[i] + 43, W - 16);
-  }
-
   time_t now = time(nullptr);
   for (int i = 0; i < N_SOURCES; i++) {
     const SourceUi& s = gSnap.src[i];
-    int ty = rowTop[i];
+    const int x = 10 + i * 76;
+    const int center = x + 36;
+    const int right = x + 67;
+    const bool usable = s.present && s.ok && s.remainWeek >= 0.0f && s.remainWeek <= 100.0f;
+    if (i > 0) u8g2.drawVLine(x - 2, 33, 220);
 
     u8g2.setFont(u8g2_font_helvB10_tf);
-    u8g2.drawStr(10, ty + 12, s.name);
-    if (s.origin[0]) {
-      int nw = u8g2.getStrWidth(s.name);
-      u8g2.setFont(u8g2_font_6x10_tf);
-      u8g2.drawStr(10 + nw + 4, ty + 12, s.origin);
-    }
-    u8g2.setFont(u8g2_font_helvB10_tf);
-    strRight(W - 10, ty + 12, combinedPace(s));
+    strCenter(center, 43, s.name);
+    char balance[12];
+    if (usable) snprintf(balance, sizeof(balance), "%.0f%%", s.remainWeek);
+    else snprintf(balance, sizeof(balance), "--");
+    u8g2.setFont(u8g2_font_helvB18_tf);  // 100% is 62px; column interior is 72px
+    strCenter(center, 78, balance);
+    drawBar(x + 5, 88, 62, 7, usable ? s.remainWeek / 100.0f : 0.0f);
 
+    char pace[16];
+    snprintf(pace, sizeof(pace), "%s", combinedPace(s));
+    char* paceSecond = strchr(pace, ' ');
+    if (paceSecond) *paceSecond++ = '\0';
+    u8g2.setFont(u8g2_font_helvB08_tf);
+    strCenter(center, 109, pace);
+    if (paceSecond) strCenter(center, 123, paceSecond);
+    u8g2.drawHLine(x + 5, 135, 62);
+
+    u8g2.setFont(u8g2_font_5x8_tf);
+    strCenter(center, 148, "FORECAST");
     usage_forecast::ForecastResult fc = combinedForecast(i, (long)now);
     char forecast[32];
     usage_forecast::formatForecast(forecast, sizeof(forecast), fc);
+    // Keep LEFT xx% together; put USD on line two. Other two-word results
+    // (EARLY x.xD, SRC FAIL, WAIT RST, etc.) split at their first space.
+    char* forecastSecond = strchr(forecast + (fc.status == usage_forecast::kFcLeft ? 5 : 0), ' ');
+    if (forecastSecond) *forecastSecond++ = '\0';
+    u8g2.setFont(u8g2_font_helvB08_tf);
+    strCenter(center, 166, forecast);
+    if (forecastSecond) strCenter(center, 182, forecastSecond);
+    else if (fc.status == usage_forecast::kFcWarmup) strCenter(center, 182, "<12H");
+    else if (fc.status == usage_forecast::kFcStale) strCenter(center, 182, "SYNC");
 
-    if (!s.present || !s.ok || s.remainWeek < 0) {
-      u8g2.setFont(u8g2_font_logisoso16_tn);
-      u8g2.drawStr(10, ty + 34, "--");
-      u8g2.setFont(u8g2_font_6x10_tf);
-      u8g2.drawStr(42, ty + 34, s.present ? "source fail" : "missing");
-      u8g2.drawStr(kForecastX, ty + 39, forecast);
-      continue;
-    }
-
-    char num[12];
-    snprintf(num, sizeof(num), "%.0f", s.remainWeek);
-    u8g2.setFont(u8g2_font_logisoso16_tn);
-    u8g2.drawStr(10, ty + 34, num);
-    int nw = u8g2.getStrWidth(num);
-    u8g2.setFont(u8g2_font_6x10_tf);
-    u8g2.drawStr(10 + nw + 1, ty + 34, "%");
-
-    int barX = 10 + nw + 14;
-    int barW = 120 - barX;
-    if (barW > 56) barW = 56;
-    if (barW < 6) barW = 6;
-    drawBar(barX, ty + 25, barW, 9, s.remainWeek / 100.0f);
-
-    char five[12], dayS[12], rw[16], line[40];
-    if (s.remain5h < 0) snprintf(five, sizeof(five), "--");
+    char five[12], dayText[12], resetText[16];
+    if (!usable || s.remain5h < 0) snprintf(five, sizeof(five), "--");
     else snprintf(five, sizeof(five), "%.0f%%", s.remain5h);
-    if (day[i] < 0.0f) snprintf(dayS, sizeof(dayS), "--");
-    else snprintf(dayS, sizeof(dayS), "%.0f%%", day[i]);
-    fmtReset(s.resetWeek, rw, sizeof(rw));
-    snprintf(line, sizeof(line), "5H:%s D:%s%s W:%s", five, dayS,
-             (i == bestIdx && day[i] >= 0.0f) ? "*" : "", rw);
-    u8g2.drawStr(kForecastX, ty + 25, line);
-    u8g2.drawStr(kForecastX, ty + 39, forecast);
+    if (!usable || day[i] < 0.0f) snprintf(dayText, sizeof(dayText), "--");
+    else snprintf(dayText, sizeof(dayText), "%.0f%%%s", day[i], i == bestIdx ? "*" : "");
+    if (usable) fmtReset(s.resetWeek, resetText, sizeof(resetText));
+    else snprintf(resetText, sizeof(resetText), "--");
+    u8g2.setFont(u8g2_font_6x10_tf);
+    u8g2.drawStr(x + 5, 208, "5H");
+    strRight(right, 208, five);
+    u8g2.drawStr(x + 5, 228, "D");
+    strRight(right, 228, dayText);
+    u8g2.drawStr(x + 5, 248, "W");
+    strRight(right, 248, resetText);
   }
 
-  drawBottomBar(nullptr);  // show ingest time / status
+  drawBottomBar(nullptr);  // preserve link, page, ingest/error and battery status
 }
 
 static void render() {

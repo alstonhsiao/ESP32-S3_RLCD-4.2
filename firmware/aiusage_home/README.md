@@ -15,7 +15,7 @@ BOOT 是板上靠近 USB 的 **BOOT** 側鍵（GPIO0），不是 PWR。
 
 | 頁 | 內容 |
 | --- | --- |
-| **P0 Combined** | 五來源橫列總覽：週剩餘 % + bar、5h、建議一天額度、週 reset、gap 五級節奏、提前用完／到期剩餘與 USD 估值 |
+| **P0 Combined** | D 方案五欄儀表：週剩餘 % + bar、5h、建議一天額度、週 reset、gap 五級節奏、提前用完／到期剩餘與 USD 估值 |
 | **P1 Trend** | 最近 10 天、最多 720 點（20 分鐘一格，較密雲端點自動降取樣）剩餘折線（五源線型不同）+ 100/7 輔助虛線 |
 | **P2–P6 Source Trend** | Claude / Chihyi / Alston / Grok / Ollama 各自一頁；最近 10 天剩餘曲線、實際時間軸、reset 標記、due/reset 理想斜率；提前 reset 時截斷理想線 |
 
@@ -72,13 +72,13 @@ poll ok: pts=96 C=56 H=88 A=22 G=42 O=70
 
 ## 預期畫面
 
-- P0 標題 `ALL DETAIL`，五列橫排顯示 CLAUDE / CHIHYI / ALSTON / GROK / OLLAMA 的剩餘數值與 reset 資訊
+- P0 標題 `ALL DETAIL`，五欄依序顯示 CLAUDE / CHIHYI / ALSTON / GROK / OLLAMA；每欄由上往下為週剩餘數值與 bar、兩行節奏、兩行預測、5H／D／W；標頭顯示時間，底欄保留連線／頁碼／電量
 - P1 顯示五來源最近 10 天趨勢；P2–P6 為各來源圖表
 - 底欄顯示連線狀態、ingest 時間與電量
 
 ## ALL DETAIL 預測
 
-每列右側新增 `EARLY 3.4D`（預計提前 3.4 天用完）或 `LEFT 40% ~$2.00`（重置時預計剩 40%，約值 USD 2.00）。依最新快照的本週累積平均消耗推估，並非最近幾小時的即時速度；`D:` 仍是接下來的每日建議預算。
+每欄中段分兩行顯示 `EARLY`／`3.4D`（預計提前 3.4 天用完）或 `LEFT 40%`／`~$2.00`（重置時預計剩 40%，約值 USD 2.00）。依最新快照的本週累積平均消耗推估，並非最近幾小時的即時速度；`D` 仍是接下來的每日平均預算；`*` 標示日預算最高的來源。連線來源名稱（origin）不佔用欄位。
 
 週期未滿 12 小時顯示 `WARMUP`；資料超過 6 小時或無效時暫停預測；`USED UP` 表示額度已用完。USD 採月費除以 4 的四週制，僅為未使用價值估算，並非退款；預設月費 Claude 20、Chihyi 21、Alston 21、Grok 30、Ollama 20 USD，可於韌體集中常數調整。
 

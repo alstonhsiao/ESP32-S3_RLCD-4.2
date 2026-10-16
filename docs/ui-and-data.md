@@ -27,7 +27,7 @@
 
 | 頁面 | 目的 | 主要輸入／輸出 | 注意事項 |
 | --- | --- | --- | --- |
-| P0 Combined | 一眼比較五個來源的週、5h、每日建議額度與 reset | 五源週剩餘%、bar、5h、day%、reset、節奏、預測、連線與電池狀態 | bar 表示剩餘比例；日額 = 週剩餘% ÷ 剩餘天；五列橫排，每列包含節奏、現況與預測；節奏與網站同用 gap：實際剩餘 − 七天均速理想剩餘，±3pp 內 ON PACE、超過 ±3 至 ±10pp 為 SLOW／FAST，嚴格超過 ±10pp 為 VERY SLOW／VERY FAST |
+| P0 Combined | 一眼比較五個來源的週、5h、每日建議額度與 reset | 五源週剩餘%、bar、5h、day%、reset、節奏、預測、連線與電池狀態 | bar 表示剩餘比例；日額 = 週剩餘% ÷ 剩餘天；D 五欄儀表，每欄由上往下包含週剩餘、兩行節奏、兩行預測與 5H／D／W，省略 origin 名稱；節奏與網站同用 gap：實際剩餘 − 七天均速理想剩餘，±3pp 內 ON PACE、超過 ±3 至 ±10pp 為 SLOW／FAST，嚴格超過 ±10pp 為 VERY SLOW／VERY FAST |
 | P1 Trend | 看近期週剩餘趨勢 | 有限歷史點、五種 1bpp 線型、輔助線 | 多線重疊時優先可讀性，並以 P2–P6 單源頁補足 |
 | P2–P6 Source Trend | 分別看 Claude／Chihyi／Alston／Grok／Ollama 最近 10 天週剩餘 | 單一來源剩餘曲線、reset、due/reset 理想線、斜率摘要 | 實際資料限制最近 10 天；提前 reset 時理想線在事件點截斷，reset 後重新由 100% 開始；節奏以實測斜率對比理想斜率：內圈 ±10% 相對容差，超過 ±20% 為 VERY FAST／VERY SLOW；斜率窗不足 6 小時顯示 `RESET`／`--` |
 | Error／Partial | 讓失敗狀態仍可讀 | 無資料、部分來源、重試與連線狀態 | 不得以白屏掩蓋 HTTP、Wi-Fi 或資料問題 |
@@ -53,3 +53,9 @@
 USD 為未使用額度的訂閱費分攤估值，並非退款或可兌現餘額。為與網站一致，採「月費 ÷ 4 × 顯示的整數預測剩餘比例」。預設月費 CLAUDE 20、CHIHYI 21、ALSTON 21、GROK 30、OLLAMA 20 USD，集中於韌體常數；實際訂閱不同時應調整。
 
 顯示維持 `U8G2_R1`、400×300、1bpp，需要環境光。新增預測只做本機計算；每 15 分鐘抓資料、分鐘級重畫、每 5 分鐘翻頁與互動延遲更新策略維持原設定，沒有新增 Wi-Fi 連線或刷新。
+
+## ALL DETAIL D 五欄儀表（2026-10-16）
+
+使用者選定 `ui/all-detail-layout-options.html` 的 D 方案。P0 採五個等距 76px 欄位（CLAUDE／CHIHYI／ALSTON／GROK／OLLAMA），以垂直分隔線區分來源；從上到下為名稱、週剩餘大字與 bar、分行節奏、預測、5H／D／W。`LEFT xx%` 與 USD 分開兩行，`EARLY` 與提前天數分開兩行；失敗來源保留名稱，數值顯示 `--`，預測區呈現 MISSING／SRC FAIL。D 最大值的 `*` 仍保留，連線來源名稱省略。標頭顯示本地時間，UPD 提示出現時預留空間；底欄維持既有狀態與電量。
+
+畫布維持 R1 400×300、1bpp、無背光；內容止於 y=252，底欄分隔線 y=258。實際 U8g2 字型輸出存於 `ui/all-detail-d.svg` 與 `ui/all-detail-d-partial.svg`，供現行 wireframe 載入；固定快照只用於預覽。此次只調整顯示，預測公式、GPIO、15 分鐘抓取、分鐘刷新、5 分鐘翻頁與 Wi-Fi 關閉策略均不變。
