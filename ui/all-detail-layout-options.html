@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALL DETAIL · 五種排版提案</title>
+<style>
+  :root{color-scheme:light;--paper:#f4f3ef;--ink:#222820;--muted:#646c60;--line:#d7dcd1;--accent:#335441}
+  *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  main{max-width:1220px;margin:auto;padding:52px 36px 60px}.eyebrow{font:600 11px monospace;letter-spacing:.16em;color:var(--accent)}
+  h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.04em;margin:13px 0 14px;font-weight:650}header p{color:var(--muted);line-height:1.8;max-width:780px;font-size:14px;margin:0}
+  .toolbar{display:flex;gap:20px;flex-wrap:wrap;justify-content:space-between;align-items:center;border-block:1px solid var(--line);padding:18px 0;margin:28px 0 30px}
+  .controls{display:flex;gap:7px;align-items:center;flex-wrap:wrap}label,.control-label{font-size:12px;color:var(--muted);margin-right:3px}
+  button,select{font:inherit;font-size:12px;border:1px solid #bfc7b8;background:transparent;color:var(--ink);padding:8px 11px;border-radius:5px;cursor:pointer}
+  button:hover,select:hover{background:#e6e9e1}button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:white}button:focus-visible,select:focus-visible{outline:3px solid #7ba386;outline-offset:3px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:40px 30px}.panel{min-width:0}.panel-head{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+  .letter{display:grid;place-items:center;font:600 13px monospace;width:29px;height:29px;border:1px solid #aeb9a6;border-radius:50%}.panel h2{font-size:18px;letter-spacing:-.02em;margin:0;font-weight:600}
+  .tag{font-size:10px;padding:4px 7px;border:1px solid #aeb9a6;border-radius:4px;color:var(--accent);margin-left:auto;white-space:nowrap}
+  .device{background:#30362f;border:1px solid #242b22;border-radius:12px;padding:17px;box-shadow:0 9px 18px #2939240c}
+  .hardware{display:flex;justify-content:space-between;color:#bdc5b8;font:9px monospace;letter-spacing:.1em;padding:0 1px 12px}
+  .screen-wrap{width:100%;aspect-ratio:4/3;background:#fff}.screen{display:block;width:100%;height:100%;background:white;color:black}
+  .screen text{fill:#000;font-family:Arial,Helvetica,sans-serif;font-weight:500}.screen .mono{font-family:Menlo,Consolas,monospace}.screen .bold{font-weight:700}
+  .caption{font-size:13px;line-height:1.75;margin:14px 0 0}.tradeoff{font-size:12px;line-height:1.75;color:var(--muted);margin:5px 0 0}
+  .panel-foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:12px}.panel-foot span{font:10px monospace;color:var(--muted)}
+  .notes{border-top:1px solid var(--line);margin-top:40px;padding-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:30px;font-size:12px;line-height:1.9;color:var(--muted)}.notes strong{color:var(--ink)}
+  .notes p{margin:0 0 8px}.grid.native .device{width:436px;max-width:none}.grid.native{grid-template-columns:repeat(2,minmax(436px,1fr));overflow-x:auto}.grid.focused{grid-template-columns:minmax(0,820px);justify-content:center}.grid.focused .panel:not(.chosen){display:none}.grid.focused.native{grid-template-columns:436px}.grid.focused.native .device{width:436px}
+  [hidden]{display:none!important}.back{margin-left:auto}footer{font-size:11px;color:var(--muted);margin-top:24px}
+  @media(max-width:850px){main{padding:30px 18px}.grid{grid-template-columns:1fr}.notes{grid-template-columns:1fr;gap:8px}.grid.native{grid-template-columns:436px}.toolbar{gap:12px}}
+  @media print{.toolbar,.panel-foot,footer{display:none}body{background:white}main{padding:0}.grid{gap:25px}.panel{break-inside:avoid}.device{box-shadow:none}.notes{break-inside:avoid}}
+</style>
+<main>
+  <header>
+    <div class="eyebrow">RLCD / DESIGN STUDY 01 / 400 × 300</div>
+    <h1>ALL DETAIL，五種閱讀順序。</h1>
+    <p>相同的五個來源、相同的數據，重新安排資訊的優先順序。先看哪一個最容易回答：<strong>還剩多少？速度如何？會提早用完，還是留下額度？</strong></p>
+  </header>
+  <div class="toolbar">
+    <div class="controls"><label for="scenario">資料情境</label><select id="scenario"><option value="snapshot">實際快照 · 10/16 08:50</option><option value="extreme">壓力範例 · 長字與極端數值</option><option value="partial">部分來源失敗</option><option value="stale">快照過期 · 超過 6 小時</option></select></div>
+    <div class="controls"><span class="control-label">顯示尺寸</span><button id="fit" aria-pressed="true">隨視窗縮放</button><button id="native" aria-pressed="false">原生 400 × 300</button><button class="back" id="back" hidden>返回五款比較</button></div>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="notes">
+    <div><p><strong>怎麼讀這些數字</strong></p><p>大百分比＝目前週剩餘。5H＝五小時剩餘；D＝剩餘額度 ÷ 距重置天數（每日平均可用額度）；W＝距週重置時間。</p><p>EARLY 3.8D＝預計提早 3.8 天用完；LEFT 40% ≈$2.00＝到期預估剩下 40%，折合約 USD 2。USD 沿用月費 ÷ 4 的週額度估值。WARMUP＝新週期不足 12 小時，暫不預測。</p></div>
+    <div><p><strong>設計條件與取捨</strong></p><p>每個螢幕都是 R1 橫向 400×300，僅黑白，沒有灰階或彩色狀態提示。五款保留週剩餘、節奏、預測、5H、D 與 W；為了降低雜訊，省略連線來源名稱。</p><p>字型為瀏覽器近似；選定後會再用 U8g2 實際字型驗證。這是離線排版模擬，未修改裝置畫面、資料拉取或刷新頻率，沒有新增 Wi-Fi 與電池消耗。</p></div>
+  </div>
+  <footer>實際快照取自 2026-10-16 08:50:22（Asia/Taipei）；其他情境是明確標示的模擬資料。可直接以瀏覽器開啟本檔，無需網路。</footer>
+</main>
+<script>
+'use strict';
+const configs=[
+ {id:'A',title:'對齊表格',tag:'推薦 · 跨來源比較',good:'欄位固定對齊，先比較剩餘與節奏；預測獨立一行，不和操作數字混在一起。',tradeoff:'資訊最完整，但 5H、D、W 的字較小，適合近距離看。'},
+ {id:'B',title:'大字餘額',tag:'遠看更清楚',good:'週剩餘是第一視覺焦點，名稱與預測分成兩行，延續目前使用習慣。',tradeoff:'比表格好掃讀單一來源；跨來源比較 5H 與 D 需要移動視線。'},
+ {id:'C',title:'預測優先',tag:'先看使用結果',good:'先看到 EARLY 或 LEFT，直接回答「照現在速度，這週會怎樣？」再看當前餘額。',tradeoff:'預測佔最多空間；WARMUP 或過期時，畫面會以狀態文字為主。'},
+ {id:'D',title:'五欄儀表',tag:'每個來源一條直欄',good:'所有來源採同一個垂直結構；餘額、節奏、預測各自橫向成列，便於比較。',tradeoff:'每欄只有約 76px，節奏與預測需要分行，名字和輔助字較小。'},
+ {id:'E',title:'分組卡片',tag:'區塊感最明確',good:'用留白與邊框把每個來源隔開。名稱、餘額、預測在各自卡片中完成閱讀。',tradeoff:'五個來源無法平均分成兩欄，最後一張採橫幅，閱讀節奏不完全一致。'}
+];
+const obs=1792111822;
+const original=[
+ {name:'CLAUDE',r:3,h:98,reset:1792126800,fee:20},
+ {name:'CHIHYI',r:77,h:null,reset:1792653368,fee:21},
+ {name:'ALSTON',r:66,h:null,reset:1792652244,fee:21},
+ {name:'GROK',r:98,h:null,reset:1792679527,fee:30},
+ {name:'OLLAMA',r:65.5,h:100,reset:1792368000,fee:20}
+];
+const grid=document.querySelector('#grid');
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+const text=(x,y,s,size=11,cls='',anchor='start')=>`<text x="${x}" y="${y}" font-size="${size}" class="${cls}" text-anchor="${anchor}">${esc(s)}</text>`;
+const line=(x1,y1,x2,y2)=>`<path d="M${x1} ${y1}H${x2}" fill="none" stroke="#000"/>`.replace(`H${x2}`,y1===y2?`H${x2}`:`L${x2} ${y2}`);
+const box=(x,y,w,h,fill='none')=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="#000"/>`;
+const bar=(x,y,w,r)=>box(x,y,w,6)+((r!==null&&r>0)?`<rect x="${x+1}" y="${y+1}" width="${(w-2)*r/100}" height="4" fill="#000"/>`:'');
+function prepare(s,scenario){
+ const d=(s.reset-obs)/86400,e=7-d,gap=s.r-Math.min(100,d/7*100);
+ const pace=gap>10?'VERY SLOW':gap>3?'SLOW':gap< -10?'VERY FAST':gap< -3?'FAST':'ON PACE';
+ const v=(100-s.r)/e,p=s.r-v*d,early=d-s.r/v;
+ let parts=e<.5?['WARMUP','<12H HISTORY']:s.r===0?['USED UP','WAIT RESET']:p<0?[early<.1?'NEAR RESET':'EARLY',early<.1?'':`${early.toFixed(1)}D`]:[`LEFT ${Math.round(Math.max(0,p))}%`,`~$${(s.fee/4*Math.round(Math.max(0,p))/100).toFixed(2)}`];
+ let full=parts.join(' '),valid=true;
+ if(s.state){parts=[s.state,'NO FORECAST'];full=s.state;valid=false;}
+ if(scenario==='stale'){parts=['STALE','SYNC NEEDED'];full='STALE - SYNC NEEDED';}
+ const reset=d<1?`${Math.round(d*24)}h`:`${d.toFixed(1)}d`;
+ return {...s,pace:valid?pace:'--',parts,full,valid,left:valid?`${Math.round(s.r)}%`:'--',five:valid&&s.h!==null?`${s.h}%`:'--',daily:valid?`${Math.round(s.r/d)}%`:'--',week:valid?reset:'--'};
+}
+function dataset(scenario){
+ let data=original.map(s=>({...s}));
+ if(scenario==='extreme') data=data.map((s,i)=>({...s,r:[100,0,40,99,95][i],h:[100,null,null,null,100][i],reset:obs+[2,4,4,6.6,.5][i]*86400}));
+ if(scenario==='partial'){data[1].state='MISSING';data[3].state='SRC FAIL';}
+ return data.map(s=>prepare(s,scenario));
+}
+function chrome(id,scenario){
+ return text(10,19,'ALL DETAIL',14,'bold')+text(390,19,'08:50',15,'mono bold','end')+line(8,27,392,27)+line(8,278,392,278)+text(10,293,scenario==='stale'?'DATA >6H OLD':scenario==='snapshot'?'SYNC 08:50':'SIMULATED DATA',9,'mono')+text(200,293,`${id} / 5 SOURCES`,9,'mono','middle')+text(390,293,'P0  1/7',9,'mono','end');
+}
+function layoutA(data){
+ let s=text(10,43,'SOURCE',8.5,'mono')+text(145,43,'LEFT',8.5,'mono','end')+text(160,43,'PACE',8.5,'mono')+text(291,43,'5H',8.5,'mono','end')+text(341,43,'D',8.5,'mono','end')+text(390,43,'W',8.5,'mono','end');
+ data.forEach((d,i)=>{const y=49+i*45;s+=text(10,y+15,d.name,12,'bold')+text(145,y+15,d.left,18,'bold','end')+text(160,y+15,d.pace,10.5,'bold')+text(291,y+15,d.five,10,'mono','end')+text(341,y+15,d.daily,10,'mono','end')+text(390,y+15,d.week,10,'mono','end')+text(10,y+33,'FORECAST',8,'mono')+text(75,y+33,d.full,11,'bold');if(i<4)s+=line(10,y+40,390,y+40);});return s;
+}
+function layoutB(data){
+ let s='';data.forEach((d,i)=>{let y=33+i*48;s+=text(10,y+31,d.left,26,'bold')+bar(11,y+37,58,d.valid?d.r:null)+text(84,y+12,d.name,12,'bold')+text(390,y+12,d.pace,10.5,'bold','end')+text(84,y+29,d.full,13,'bold')+text(84,y+42,`5H ${d.five}   D ${d.daily}   W ${d.week}`,10,'mono');if(i<4)s+=line(10,y+46,390,y+46);});return s;
+}
+function layoutC(data){
+ let s='';data.forEach((d,i)=>{let y=34+i*48;s+=text(10,y+11,d.name,10,'bold')+text(119,y+11,d.pace,9,'bold')+text(390,y+11,'WEEK LEFT',8,'mono','end')+text(10,y+31,d.full,17,'bold')+text(390,y+39,d.left,24,'bold','end')+text(10,y+43,`5H ${d.five}   D ${d.daily}   W ${d.week}`,9,'mono');if(i<4)s+=line(10,y+46,390,y+46);});return s;
+}
+function layoutD(data){
+ let s='';data.forEach((d,i)=>{let x=10+i*76,c=x+36;if(i)s+=line(x-3,36,x-3,267);s+=text(c,48,d.name,10,'bold','middle')+text(c,81,d.left,26,'bold','middle')+bar(x+5,91,62,d.valid?d.r:null);const p=d.pace.split(' ');s+=text(c,119,p.length>1?p[0]:d.pace,10.5,'bold','middle')+text(c,133,p.length>1?p.slice(1).join(' '):'',10.5,'bold','middle')+line(x+5,143,x+67,143)+text(c,157,'FORECAST',8,'mono','middle')+text(c,175,d.parts[0],10.5,'bold','middle')+text(c,191,d.parts[1],d.parts[1].length>8?9:11,'bold','middle')+text(x+5,217,'5H',9,'mono')+text(x+67,217,d.five,10,'mono','end')+text(x+5,237,'D',9,'mono')+text(x+67,237,d.daily,10,'mono','end')+text(x+5,257,'W',9,'mono')+text(x+67,257,d.week,10,'mono','end');});return s;
+}
+function layoutE(data){
+ let s='';data.forEach((d,i)=>{if(i<4){let x=i%2?205:8,y=36+Math.floor(i/2)*93;s+=box(x,y,187,87)+text(x+8,y+15,d.name,11,'bold')+text(x+179,y+15,d.pace,8.5,'bold','end')+text(x+8,y+44,d.left,27,'bold')+bar(x+104,y+33,74,d.valid?d.r:null)+text(x+8,y+63,d.full,11,'bold')+text(x+8,y+79,`5H ${d.five} D ${d.daily} W ${d.week}`,8.7,'mono');}else{let y=222;s+=box(8,y,384,49)+text(16,y+15,d.name,11,'bold')+text(16,y+33,d.pace,8.5,'bold')+text(145,y+34,d.left,27,'bold','end')+text(164,y+18,d.full,12,'bold')+text(164,y+37,`5H ${d.five} D ${d.daily} W ${d.week}`,9,'mono');}});return s;
+}
+const layouts=[layoutA,layoutB,layoutC,layoutD,layoutE];
+configs.forEach(c=>{let panel=document.createElement('article');panel.className='panel';panel.id=`option-${c.id}`;panel.innerHTML=`<div class="panel-head"><span class="letter">${c.id}</span><h2>${c.title}</h2><span class="tag">${c.tag}</span></div><div class="device"><div class="hardware"><span>ST7305 / MONOCHROME</span><span>R1 · 400 × 300</span></div><div class="screen-wrap"><svg class="screen" role="img" aria-label="方案 ${c.id} ${c.title}" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg"></svg></div></div><p class="caption">${c.good}</p><p class="tradeoff">取捨：${c.tradeoff}</p><div class="panel-foot"><span>OPTION ${c.id} / 同一份資料</span><button data-focus="${c.id}">放大看 ${c.id}</button></div>`;grid.append(panel);});
+function render(){const scenario=document.querySelector('#scenario').value,data=dataset(scenario);document.querySelectorAll('.screen').forEach((svg,i)=>svg.innerHTML=`<rect width="400" height="300" fill="#fff"/>`+chrome(configs[i].id,scenario)+layouts[i](data));}
+document.querySelector('#scenario').addEventListener('change',render);
+document.querySelectorAll('[data-focus]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('chosen',p.id===`option-${b.dataset.focus}`));grid.classList.add('focused');document.querySelector('#back').hidden=false;grid.scrollIntoView({behavior:'smooth',block:'start'});}));
+document.querySelector('#back').addEventListener('click',()=>{grid.classList.remove('focused');document.querySelector('#back').hidden=true;});
+for(const id of ['fit','native'])document.getElementById(id).addEventListener('click',()=>{grid.classList.toggle('native',id==='native');for(const key of ['fit','native'])document.getElementById(key).setAttribute('aria-pressed',String(key===id));});
+render();
+</script>
+</html>

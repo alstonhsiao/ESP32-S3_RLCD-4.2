@@ -8,6 +8,7 @@
 | 檔案 | 說明 |
 | --- | --- |
 | [aiusage-wireframe.html](./aiusage-wireframe.html) | 現行 P0–P6 與 Error／Partial 狀態的 AI 週剩餘 wireframe |
+| [all-detail-layout-options.html](./all-detail-layout-options.html) | ALL DETAIL 五種排版比較：對齊表格、大字餘額、預測優先、五欄儀表、分組卡片；尚未套用韌體 |
 | [../web/aiusage-analysis.html](../web/aiusage-analysis.html) | 電腦端四源分析圖表（仍用舊 `codex` key，尚未同步韌體五源）；P2–P6 的 reset/due 與斜率原型 |
 
 ## 如何預覽
@@ -19,6 +20,14 @@ open ui/aiusage-wireframe.html
 ```
 
 或在 Finder 中雙擊該檔。
+
+比較新的 ALL DETAIL 排版：
+
+```bash
+open ui/all-detail-layout-options.html
+```
+
+五款使用同一份固定快照，可切換極端數值、部分失敗、快照過期，並選擇原生 400×300 或單款放大。螢幕保持黑白；瀏覽器字型僅為近似，選定版面後再以 U8g2 字型驗證。比較稿不改變韌體、資料拉取、刷新或電池消耗。
 
 ## 設計約束（與硬體一致）
 
