@@ -60,3 +60,11 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 ## 功耗與驗證邊界
 
 Wi-Fi、HTTPS、較大的 JSON、連續重繪與語音都可能提高耗電；韌體變更回報必須說明是否影響這些項目。電池 ADC 只是粗略百分比，不可當成精密電量或庫侖計。
+
+## Apple Silicon 編譯工具相容性（2026-10-16）
+
+本機 Arduino CLI 1.5.0 附帶的 `builtin/tools/ctags/5.8-arduino11/ctags` 原為 x86_64，在這台 arm64 Mac 無法執行，編譯報 `bad CPU type in executable`。本次由 Arduino 官方 `arduino/ctags` 的 `5.8-arduino11` tag（commit `abc8fca7499f44c725122881cd380a88c37abe0e`）重建 arm64 版本；僅把內部 `__unused__` annotation 改名為 `CTAGS_UNUSED`，避免與 Apple SDK 巨集衝突，未更動解析規則。
+
+工具安裝位置仍是 `~/Library/Arduino15/packages/builtin/tools/ctags/5.8-arduino11/ctags`。原執行檔備份為同目錄 `ctags.x86_64-backup-20261016`；建置來源與步驟記錄在 `ctags.arm64-build-notes.txt`。若 Arduino 工具套件更新覆蓋此檔，先以 `file` 檢查架構，不要反覆重試相同錯誤的燒錄流程。板級 FQBN 與專案燒錄腳本維持原設定。
+
+目前腳本只監看 Serial 25 秒，可能漏掉前段開機字串，或在較大的 `/data` 尚未掃描完成前回傳 code 4。本次遇到此情況後，另外完整監看開機與 `poll ok`／`P0 ... forecast=...` 確認資料與預測；code 4 本身不代表上傳失敗。

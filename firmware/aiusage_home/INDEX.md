@@ -6,6 +6,8 @@
 | --- | --- | --- | --- |
 | `aiusage_home.ino` | 大型單檔 Arduino sketch，含資料、網路、按鍵與 P0–P6 繪製 | 任何主儀表行為、穩定度或功耗變更 | 先找對應區段，再讀相關上下文 |
 | `usage_scan.h` | `/data` 串流掃描器的結構體（ScanPoint／ScanState） | 修改 JSON 解析或 Arduino 原型可見性 | 與 `aiusage_home.ino` 的 streaming 區段一起讀 |
+| `usage_forecast.h` | P0 gap 判定、週預測、月費與顯示字串的純 C++ 計算 | 調整節奏、預測與 USD 估值 | 與 `test/test_usage_forecast.cpp` 一起讀 |
+| `test/test_usage_forecast.cpp` | host 端公式與退化狀態驗證 | 修改預測或邊界條件後 | 使用系統 C++ 編譯執行；指令見 README |
 | `README.md` | 人類操作、頁面與配網說明 | 需要確認目前上板行為或驗收步驟 | 先讀摘要與操作表 |
 | `secrets.h.example` | 可提交的 Wi-Fi 設定樣板 | 需要寫死 Wi-Fi 或檢查編譯設定 | 只讀欄位，不填入真實密碼 |
 | `secrets.h` | 本機 ignored 設定，可能含敏感憑證 | 只在本機編譯／配網故障時按需確認 | 不列入版本控制，不在回報貼出內容 |

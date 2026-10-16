@@ -15,7 +15,7 @@ BOOT 是板上靠近 USB 的 **BOOT** 側鍵（GPIO0），不是 PWR。
 
 | 頁 | 內容 |
 | --- | --- |
-| **P0 Combined** | 五來源橫列總覽：週剩餘 % + bar、5h、建議一天額度、週 reset、五級節奏 VERY SLOW／SLOW／ON PACE／FAST／VERY FAST |
+| **P0 Combined** | 五來源橫列總覽：週剩餘 % + bar、5h、建議一天額度、週 reset、gap 五級節奏、提前用完／到期剩餘與 USD 估值 |
 | **P1 Trend** | 最近 10 天、最多 720 點（20 分鐘一格，較密雲端點自動降取樣）剩餘折線（五源線型不同）+ 100/7 輔助虛線 |
 | **P2–P6 Source Trend** | Claude / Chihyi / Alston / Grok / Ollama 各自一頁；最近 10 天剩餘曲線、實際時間軸、reset 標記、due/reset 理想斜率；提前 reset 時截斷理想線 |
 
@@ -28,7 +28,7 @@ BOOT 是板上靠近 USB 的 **BOOT** 側鍵（GPIO0），不是 PWR。
 | 刷新 | 資料 **15 分鐘**、自動翻頁 **5 分鐘**（P0–P6 一輪約 35 分鐘）、reset 倒數／電量在**分鐘變時重畫**；P2–P6 只使用最新 10 天歷史點 |
 | Wi‑Fi | **間歇**：只在拉 `/data`（或配網）時連線，結束後 `WIFI_OFF`；底欄 `live`=連線中、`idle`=有資料但 radio 關 |
 | 手動更新 | 短按換頁後若 10 秒內沒有再按，額外開 Wi-Fi 拉取一次並短暫顯示 `UPD`；連續翻頁只在最後一次按鍵後觸發一次 |
-| P0 語意 | `DAY% = 週剩餘% ÷ 剩餘天`；% 皆為剩餘；無 5h 窗顯示 `--`；節奏對比 `100/7`：內圈 12–18，超過 22 為 VERY SLOW、低於 7 為 VERY FAST |
+| P0 語意 | `DAY% = 週剩餘% ÷ 剩餘天`；% 皆為剩餘；無 5h 窗顯示 `--`；節奏以週剩餘與七天理想剩餘的 gap 判定：±3pp 內 ON PACE，超過 ±3 至 ±10pp 為 SLOW／FAST，嚴格超過 ±10pp 為 VERY SLOW／VERY FAST |
 | P2–P6 語意 | Y 軸為剩餘 %；理想線由每個 reset 到該週期 due/reset 計算；提前 reset 不強制拉到 0%；reset 後資料不足 6 小時／3 點時實測斜率顯示 `--`。節奏以實測斜率對比理想斜率：內圈 ±10% 相對容差、超過 ±20% 為 VERY FAST／VERY SLOW。10 天視窗以 20 分鐘網格降取樣（最多 720 點），確保較早的 reset 也在窗內、理想線可從真實 reset 錨點滿高畫出 |
 | 時鐘 | NTP（UTC+8） |
 | 電量 | GPIO4 ADC（有 18650 才顯示） |
@@ -75,3 +75,22 @@ poll ok: pts=96 C=56 H=88 A=22 G=42 O=70
 - P0 標題 `ALL DETAIL`，五列橫排顯示 CLAUDE / CHIHYI / ALSTON / GROK / OLLAMA 的剩餘數值與 reset 資訊
 - P1 顯示五來源最近 10 天趨勢；P2–P6 為各來源圖表
 - 底欄顯示連線狀態、ingest 時間與電量
+
+## ALL DETAIL 預測
+
+每列右側新增 `EARLY 3.4D`（預計提前 3.4 天用完）或 `LEFT 40% ~$2.00`（重置時預計剩 40%，約值 USD 2.00）。依最新快照的本週累積平均消耗推估，並非最近幾小時的即時速度；`D:` 仍是接下來的每日建議預算。
+
+週期未滿 12 小時顯示 `WARMUP`；資料超過 6 小時或無效時暫停預測；`USED UP` 表示額度已用完。USD 採月費除以 4 的四週制，僅為未使用價值估算，並非退款；預設月費 Claude 20、Chihyi 21、Alston 21、Grok 30、Ollama 20 USD，可於韌體集中常數調整。
+
+畫布維持 `U8G2_R1`、400×300、1bpp，沒有背光。新增計算不改變資料拉取、Wi-Fi 連線與刷新頻率。公式及邊界說明見 [`docs/ui-and-data.md`](../../docs/ui-and-data.md#all-detail-預測2026-10-16)。
+
+## 預測公式驗證（不操作裝置）
+
+在 repo 根目錄執行：
+
+```bash
+c++ -std=c++11 -Wall -Wextra -Werror firmware/aiusage_home/test/test_usage_forecast.cpp -o /tmp/rlcd-test-forecast
+/tmp/rlcd-test-forecast
+```
+
+涵蓋 gap 嚴格邊界、剛好用完、提前用完、零消耗、快照時間固定、重置、偏舊與無效資料。成功拉取資料時 Serial 另輸出各來源的 `P0 ... pace=... forecast=... observed=...` 供實機核對。

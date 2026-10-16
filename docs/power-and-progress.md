@@ -69,3 +69,25 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 ### 已解決事項（2026-09-01）
 
 - **節奏標籤五級化 + 英文化**（功能對齊，非事故）：上游 keyboardMaestro 的 usage-web 已改五級英文標籤（gap = 週剩餘% − 7 天理想進度剩餘%，±3pp 內 ON PACE；±3~±10pp SLOW/FAST；超過 ±10pp VERY SLOW/VERY FAST）。本專案三套 pace 實作（P0 日額對比 100/7、P2–P6 斜率對比、web 原型）與 wireframe 靜態字、五份文件一併對齊，但保留各自既有判斷式（未改成 gap 公式，因本專案裝置語義是「消耗斜率 vs 理想斜率」與「建議日額 vs 100/7」，非 usage-web 的剩餘 gap）。最終值：標籤 `VERY SLOW / SLOW / ON PACE / FAST / VERY FAST`（P0 內圈 12/18 維持、外圈 7/22；斜率式內圈 ±10% 維持、外圈 ±20%，web 原型外圈 = 內圈輸入值×2）；`RESET`、`--`、`N/A` 退化狀態保留；web 原型補 `.status-label.very-slow/.very-fast` CSS（深化色 `--warning-strong`/`--danger-strong`）。韌體經實機燒錄 + Serial 驗證；web 原型以 Playwright 對 tolerance 輸入做 0–60% 掃描，標籤翻轉點符合「外圈=內圈×2、嚴格不等式」。反例：wireframe 的範例標籤要跟著公式重算，不能只換字（P5 GROK 18.1 vs 14.3 = 1.27×，落在 ±20% 外圈，正確標籤是 VERY FAST 而非 FAST）。
+
+
+### 2026-10-16：ALL DETAIL gap 與週預測
+
+- 使用者授權：ALL DETAIL 改用網站 gap 節奏、保留每日預算，新增本週累積平均消耗的提前用完／到期剩餘與 USD 估值；指定 Grok 4.7 實作、主 agent 審核。實際以本機 Grok CLI `grok-4.7` 委派；Grok 交付公式 header、host 測試與韌體，主 agent 完成文件／wireframe、審核修正與上板。
+- P0 節奏為剩餘相對七天理想線的 gap：±3pp 內 ON PACE，超過 ±3 至 ±10pp 為 SLOW／FAST，嚴格超過 ±10pp 為 VERY SLOW／VERY FAST；P2–P6 保留既有斜率語義。D 仍是剩餘除以剩餘天數，預測則用 `(100−R)/(7−d)`，以快照時間計算，不把預算當消耗速度。
+- 預測／USD 計算集中於 `firmware/aiusage_home/usage_forecast.h`，含剛重置、過期、未來／缺失快照、無時鐘、失敗來源與零消耗等退化狀態；預設月費與四週制對齊網站。主 agent 修正 exact-zero 浮點誤差，避免剛好用完被錯判成提早用完；保留粗體名稱與節奏，五列每源新增第三行。
+- 驗證：89 項 C++ host 檢查通過；192 組 C++ 與網站 JavaScript 數值／狀態對照無差異；網站既有 21 項分析／預測測試通過。使用實際 U8g2 字型與 P0 繪製程式驗證正常／partial／最長欄位，均在 R1 400×300 1bpp 畫布內。
+- 鎖定 `flash-firmware` 腳本編譯／上傳成功：程式 1,216,379 bytes（38%）、global RAM 115,656 bytes（35%）。腳本 Serial 25 秒檢查回傳 code 4，另以完整開機監看補驗通過：`poll ok: pts=4444 trend=364 C=3 H=75 A=66 G=96 O=66`，五源 `P0` 診斷皆有輸出、`setup done` 與 `WiFi radio off` 正常。Serial 開啟造成一次 USB_UART_CHIP_RESET，受控重新監看後確認恢復。
+- 09:10:23 快照（epoch 1792113023）：CLAUDE ON PACE／LEFT 1% ~$0.05；CHIHYI VERY FAST／EARLY 4.0D；ALSTON VERY FAST／EARLY 4.8D；GROK ON PACE／WARMUP；OLLAMA VERY SLOW／LEFT 40% ~$2.00。快照已更新，與最初 08:40 的 chihyi FAST 不同是正常資料變化。
+- Wi-Fi、15 分鐘輪詢、分鐘級刷新、5 分鐘翻頁與 10 秒互動延遲更新維持原設定；未新增連線或提高刷新頻率。空資料 trigger/retry 控制流程保留，未對雲端資料做修改或觸發測試。沒有 commit／push。
+- 本機環境修復：Arduino 的 Intel `ctags` 在 arm64 無法啟動，已由同 tag 原始碼重建 native，保留原檔備份；來源、兼容巨集修正與復原位置見 `docs/firmware-operations.md`。
+
+#### 網站計算檢視（建議，尚未修改網站）
+
+| 優先序 | 已觀察的問題／限制 | 建議 |
+| --- | --- | --- |
+| 高 | `calculatePace`／每日預算使用現在時間，`forecastWeekly` 使用快照時間；重新計算同一舊快照時，pace 可從 FAST 改善成 ON PACE，但預測不變。重現：剩46%、距重置3.5天，六小時後重新計算 pace 從 FAST 變 ON PACE，預測仍提前0.5天用完。 | 節奏與預測使用一致快照時點；倒數另外用現在時間。 |
+| 高 | 預測有六小時失效保護，但候選推薦未套用快照新鮮度；頁面開著時目前定時器只更新資料年齡，沒有同步重算／隱藏失效預測與推薦。 | 統一 freshness gate；資料變舊或 reset 到期時，定時取消數字預測與推薦。 |
+| 高 | 「今日可用」其實是每日平均預算：剩80%、半天後重置會算出160%。 | 改名「平均每日預算」；若要表達本週剩餘額度中接下來最多24h可用，需另算並最多為當前剩餘。 |
+| 中 | 月費按供應商硬編碼，多個 Codex 帳號只能共用同一價格；月費/4 是四週制估算。 | 每帳號設定實際月費與週分攤方式，清楚標為未使用價值估算、非退款；另應統一金額最後一位的四捨五入規則（C printf 與 JS toFixed 在半分邊界可能差 USD 0.01，例如 2.625）。 |
+| 中 | 本週累積平均對最近突然大量使用或停用反應較慢。 | 保留週平均主預測，可選近24h速度作輔助，需排除跨 reset 與不足樣本，勿不加說明混用。 |

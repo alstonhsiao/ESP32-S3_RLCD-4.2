@@ -12,7 +12,7 @@
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
- *   P0 Combined — 5 horizontal rows: remain% + 5h + day% + reset per source
+ *   P0 Combined — 5 horizontal rows: remain% + 5h + day% + reset + week forecast
  *   P1 Trend  — last 10d remain% polylines (5 series, distinct 1bpp styles)
  *   P2-P6    — one 10d remain% chart per source, reset-aware ideal slope
  * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes
@@ -53,12 +53,8 @@
 #define N_SOURCES 5
 #define PAGE_COUNT 7
 #define CHART_PAGE_BASE 2
-// P0 pace thresholds vs the ~100/7 (≈14.3) daily ideal: inner ring keeps the
-// historic 12/18 band; outer ring ≈ ±7pp (≈1.5 days of quota off pace).
-#define PACE_DAILY_FAST 12.0f
-#define PACE_DAILY_SLOW 18.0f
-#define PACE_DAILY_VFAST 7.0f
-#define PACE_DAILY_VSLOW 22.0f
+// P0 pace is the usage-web remaining gap (usage_forecast.h): ±3 ON PACE,
+// ±3..±10 SLOW/FAST, strictly beyond ±10 VERY. P2–P6 keep the slope rings.
 // Trend buffer: 20-min grid over the 10d window (720 slots). The stream
 // scanner downsamples denser cloud points by keeping the last point of each
 // slot, so resets older than ~2 days stay visible as R anchors.
@@ -73,6 +69,7 @@
 #define TREND_EVENT_MAX 32
 
 #include "usage_scan.h"
+#include "usage_forecast.h"
 
 // Data source: cloud SQLite (persistent volume on Zeabur), fed by local SQLite upsert.
 // GET /data reads from cloud DB; POST /trigger kicks KM to query AI quota + sync.
@@ -120,6 +117,7 @@ struct UsageSnapshot {
   int trendN = 0;
   char trendStartLbl[8] = "";
   char trendEndLbl[8] = "";
+  long observedEpoch = 0;  // ts_epoch of the latest scanned point; 0 if none
 };
 
 static UsageSnapshot gSnap;
@@ -271,17 +269,35 @@ static float dailyBudgetPct(const SourceUi& s) {
   return s.remainWeek / d;
 }
 
-// Pace vs ~100/7 daily (ASCII only — U8g2 Latin fonts).
-// SLOW = under-using (high daily budget left), FAST = over-using.
-// Five levels (aligned with usage-web 2026-09-01): inner ring keeps the
-// historic ±4pp band, outer ring ~1.5 days of quota off the weekly ideal.
-static const char* paceLabel(float daily) {
-  if (daily < 0.0f) return "--";
-  if (daily > PACE_DAILY_VSLOW) return "VERY SLOW";
-  if (daily > PACE_DAILY_SLOW) return "SLOW";
-  if (daily < PACE_DAILY_VFAST) return "VERY FAST";
-  if (daily < PACE_DAILY_FAST) return "FAST";
-  return "ON PACE";
+// P0 pace vs the 7-day ideal remainder. SLOW = more left than the ideal line.
+// D stays week-remain / days-left (dailyBudgetPct). Reset already due → RESET.
+static const char* combinedPace(const SourceUi& s) {
+  if (!s.present || !s.ok || s.remainWeek < 0.0f || s.resetWeek <= 0) return "--";
+  time_t now = time(nullptr);
+  double days = usage_forecast::daysUntilReset(s.resetWeek, (long)now);
+  if (days < 0.0) return "--";
+  usage_forecast::PaceResult pace = usage_forecast::classifyPace(s.remainWeek, days);
+  return usage_forecast::paceText(pace.status);
+}
+
+static usage_forecast::ForecastResult combinedForecast(int sourceIndex, long nowEpoch) {
+  const SourceUi& s = gSnap.src[sourceIndex];
+  usage_forecast::ForecastInput in = {
+    s.remainWeek, s.resetWeek, gSnap.observedEpoch, nowEpoch,
+    usage_forecast::monthlyPlanUsd(sourceIndex), s.present, s.ok
+  };
+  return usage_forecast::forecastWeekly(in);
+}
+
+static void logCombinedForecasts() {
+  long nowEpoch = (long)time(nullptr);
+  for (int i = 0; i < N_SOURCES; i++) {
+    char prediction[32];
+    usage_forecast::formatForecast(prediction, sizeof(prediction), combinedForecast(i, nowEpoch));
+    Serial.printf("P0 %s: remain=%.1f pace=%s forecast=%s observed=%ld\n",
+                  gSnap.src[i].name, gSnap.src[i].remainWeek,
+                  combinedPace(gSnap.src[i]), prediction, gSnap.observedEpoch);
+  }
 }
 
 static void shortOrigin(const char* origin, char* out, size_t n) {
@@ -645,6 +661,8 @@ static void scanFinish(ScanState& st) {
     dst.resetWeek = st.last.resetWeek[i];
     dst.reset5h = st.last.reset5h[i];
   }
+  gSnap.observedEpoch =
+      (st.pointCount > 0 && st.last.hasEpoch && st.last.epoch > 100000) ? st.last.epoch : 0;
   gSnap.valid = (st.pointCount > 0);
 }
 
@@ -652,6 +670,7 @@ static void snapReset() {
   gSnap.valid = false;
   gSnap.pointCount = 0;
   gSnap.trendN = 0;
+  gSnap.observedEpoch = 0;
   gSnap.ingestShort[0] = 0;
   for (int i = 0; i < N_SOURCES; i++) {
     gSnap.src[i].ok = false;
@@ -789,6 +808,7 @@ static bool pollData() {
                     gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
                     gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
                     gSnap.src[4].remainWeek);
+      logCombinedForecasts();
       return true;
     }
     gLink = LinkState::Empty;
@@ -803,6 +823,7 @@ static bool pollData() {
                 gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
                 gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
                 gSnap.src[4].remainWeek);
+  logCombinedForecasts();
   return true;
 }
 
@@ -1275,8 +1296,9 @@ static void renderSourceTrend(int srcIdx) {
   drawBottomBar("R=reset D=due");
 }
 
-// P0 — 5 horizontal rows, one per source. Each row: name+origin (top line),
-// big remain% + bar + 5h/day/week-reset (bottom line), pace right-aligned.
+// P0 — 5 rows. Name/pace baseline ty+12, metrics ty+25 at x=128,
+// remain + bar on the left at ty+34, forecast ty+39 at x=128. Bold names
+// and pace; 6x10 metrics/forecast. USD is an unused-value estimate.
 static void renderCombined() {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
@@ -1297,68 +1319,67 @@ static void renderCombined() {
     if (day[i] > best) { best = day[i]; bestIdx = i; }
   }
 
-  // 5 rows in the content area (y=26..255). Row height ~44px.
+  // Tops stay 45px apart. Separator at ty+43 sits under the forecast
+  // descent (ty+41) and above the next name (ty+46).
   const int rowTop[N_SOURCES] = {30, 75, 120, 165, 210};
-  const int rowH = 44;
+  const int kForecastX = 128;
 
-  // separator lines between rows
   for (int i = 0; i < N_SOURCES - 1; i++) {
-    int y = rowTop[i] + rowH - 2;
-    u8g2.drawHLine(8, y, W - 16);
+    u8g2.drawHLine(8, rowTop[i] + 43, W - 16);
   }
 
+  time_t now = time(nullptr);
   for (int i = 0; i < N_SOURCES; i++) {
     const SourceUi& s = gSnap.src[i];
     int ty = rowTop[i];
 
-    // --- top line: name + origin (left), pace (right) ---
     u8g2.setFont(u8g2_font_helvB10_tf);
     u8g2.drawStr(10, ty + 12, s.name);
     if (s.origin[0]) {
       int nw = u8g2.getStrWidth(s.name);
-      u8g2.setFont(u8g2_font_6x13_tf);
+      u8g2.setFont(u8g2_font_6x10_tf);
       u8g2.drawStr(10 + nw + 4, ty + 12, s.origin);
     }
     u8g2.setFont(u8g2_font_helvB10_tf);
-    strRight(W - 10, ty + 12, paceLabel(day[i]));
+    strRight(W - 10, ty + 12, combinedPace(s));
 
-    // --- bottom line: big remain% + bar + 5h/day/week-reset ---
+    usage_forecast::ForecastResult fc = combinedForecast(i, (long)now);
+    char forecast[32];
+    usage_forecast::formatForecast(forecast, sizeof(forecast), fc);
+
     if (!s.present || !s.ok || s.remainWeek < 0) {
       u8g2.setFont(u8g2_font_logisoso16_tn);
-      u8g2.drawStr(10, ty + 36, "--");
-      u8g2.setFont(u8g2_font_6x13_tf);
-      u8g2.drawStr(10 + 32, ty + 34, s.present ? "source fail" : "missing");
+      u8g2.drawStr(10, ty + 34, "--");
+      u8g2.setFont(u8g2_font_6x10_tf);
+      u8g2.drawStr(42, ty + 34, s.present ? "source fail" : "missing");
+      u8g2.drawStr(kForecastX, ty + 39, forecast);
       continue;
     }
 
-    // big remain number (16pt) + % sign
     char num[12];
     snprintf(num, sizeof(num), "%.0f", s.remainWeek);
     u8g2.setFont(u8g2_font_logisoso16_tn);
-    u8g2.drawStr(10, ty + 36, num);
+    u8g2.drawStr(10, ty + 34, num);
     int nw = u8g2.getStrWidth(num);
-    u8g2.setFont(u8g2_font_helvB10_tf);
+    u8g2.setFont(u8g2_font_6x10_tf);
     u8g2.drawStr(10 + nw + 1, ty + 34, "%");
 
-    // progress bar after the number
     int barX = 10 + nw + 14;
-    int barW = 70;
-    drawBar(barX, ty + 27, barW, 9, s.remainWeek / 100.0f);
+    int barW = 120 - barX;
+    if (barW > 56) barW = 56;
+    if (barW < 6) barW = 6;
+    drawBar(barX, ty + 25, barW, 9, s.remainWeek / 100.0f);
 
-    // metrics line: 5H:xx%  DAY:xx%*  W reset xx
-    char five[12], dayS[12], rw[16], line[56];
+    char five[12], dayS[12], rw[16], line[40];
     if (s.remain5h < 0) snprintf(five, sizeof(five), "--");
     else snprintf(five, sizeof(five), "%.0f%%", s.remain5h);
     if (day[i] < 0.0f) snprintf(dayS, sizeof(dayS), "--");
     else snprintf(dayS, sizeof(dayS), "%.0f%%", day[i]);
     fmtReset(s.resetWeek, rw, sizeof(rw));
-
-    snprintf(line, sizeof(line), "5H:%s  D:%s%s  W:%s", five, dayS,
+    snprintf(line, sizeof(line), "5H:%s D:%s%s W:%s", five, dayS,
              (i == bestIdx && day[i] >= 0.0f) ? "*" : "", rw);
-
-    u8g2.setFont(u8g2_font_6x13_tf);
-    int mtrX = barX + barW + 8;
-    u8g2.drawStr(mtrX, ty + 34, line);
+    u8g2.drawStr(kForecastX, ty + 25, line);
+    u8g2.drawStr(kForecastX, ty + 39, forecast);
   }
 
   drawBottomBar(nullptr);  // show ingest time / status

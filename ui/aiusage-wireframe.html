@@ -152,29 +152,16 @@
   <main class="board" id="board">
     <section class="panel" data-page="p0">
       <h2>P0 · Combined</h2>
-      <p class="meta">五來源橫列總覽：每列一源，名稱+origin 在上，週剩餘大字+bar+5h/day/week-reset 在下，pace 右對齊。版面依現行 <code>renderCombined()</code>。</p>
+      <p class="meta">五來源三行總覽：名稱+origin 與 gap 節奏、週剩餘大字+bar 與 5H/D/W、EARLY／LEFT 預測與 USD 估值。示意數值取自 2026-10-16 08:50 快照；版面對照 <code>renderCombined()</code>。</p>
       <div class="bezel"><div class="bezel-label"><span>RLCD 400×300</span><span>P0 / 7</span></div><div class="screen-shell">
         <div class="screen" aria-label="P0 Combined wireframe">
           <div class="t s12" style="left:10px;top:7px;">ALL DETAIL</div><div class="t s8" style="right:12px;top:10px;">REMAIN=100-USED</div><div class="hline thick" style="top:24px;"></div>
 
-          <div class="t s10" style="left:10px;top:42px;">CLAUDE <span class="s8 muted">oauth</span></div><div class="t s10" style="right:10px;top:42px;">ON PACE</div>
-          <div class="t s16" style="left:10px;top:62px;font-size:17px;font-weight:700;">56<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:56px;width:70px;height:9px;"><i style="width:56%;"></i></div><div class="t s8" style="left:128px;top:62px;">5H:73% D:16%* W:3d 10h</div>
-
-          <div class="hline" style="top:72px;"></div>
-          <div class="t s10" style="left:10px;top:87px;">CHIHYI <span class="s8 muted">app-server</span></div><div class="t s10" style="right:10px;top:87px;">SLOW</div>
-          <div class="t s16" style="left:10px;top:107px;font-size:17px;font-weight:700;">88<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:101px;width:70px;height:9px;"><i style="width:88%;"></i></div><div class="t s8" style="left:128px;top:107px;">5H:-- D:22%* W:4d 1h</div>
-
-          <div class="hline" style="top:117px;"></div>
-          <div class="t s10" style="left:10px;top:132px;">ALSTON <span class="s8 muted">app-server</span></div><div class="t s10" style="right:10px;top:132px;">--</div>
-          <div class="t s16" style="left:10px;top:152px;font-size:17px;font-weight:700;">22<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:146px;width:70px;height:9px;"><i style="width:22%;"></i></div><div class="t s8" style="left:128px;top:152px;">5H:-- D:-- W:6d 3h</div>
-
-          <div class="hline" style="top:162px;"></div>
-          <div class="t s10" style="left:10px;top:177px;">GROK <span class="s8 muted">billing</span></div><div class="t s10" style="right:10px;top:177px;">FAST</div>
-          <div class="t s16" style="left:10px;top:197px;font-size:17px;font-weight:700;">42<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:191px;width:70px;height:9px;"><i style="width:42%;"></i></div><div class="t s8" style="left:128px;top:197px;">5H:-- D:10% W:4d 4h</div>
-
-          <div class="hline" style="top:207px;"></div>
-          <div class="t s10" style="left:10px;top:222px;">OLLAMA <span class="s8 muted">cookie</span></div><div class="t s10" style="right:10px;top:222px;">ON PACE</div>
-          <div class="t s16" style="left:10px;top:242px;font-size:17px;font-weight:700;">70<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:236px;width:70px;height:9px;"><i style="width:70%;"></i></div><div class="t s8" style="left:128px;top:242px;">5H:100% D:14% W:5d 0h</div>
+          <div class="t s10" style="left:10px;top:31px;">CLAUDE <span class="s8 muted">oauth</span></div><div class="t s10" style="right:10px;top:31px;">ON PACE</div><div class="t s16" style="left:10px;top:48px;font-size:17px;font-weight:700;">3<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:34px;top:55px;width:56px;height:9px;"><i style="width:3%;"></i></div><div class="t s8" style="left:128px;top:48px;">5H:98% D:17% W:4h</div><div class="t s8" style="left:128px;top:62px;">LEFT 1% ~$0.05</div>
+          <div class="hline" style="top:73px;"></div><div class="t s10" style="left:10px;top:76px;">CHIHYI <span class="s8 muted">app-server</span></div><div class="t s10" style="right:10px;top:76px;">VERY FAST</div><div class="t s16" style="left:10px;top:93px;font-size:17px;font-weight:700;">77<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:44px;top:100px;width:56px;height:9px;"><i style="width:77%;"></i></div><div class="t s8" style="left:128px;top:93px;">5H:-- D:12% W:6d 6h</div><div class="t s8" style="left:128px;top:107px;">EARLY 3.8D</div>
+          <div class="hline" style="top:118px;"></div><div class="t s10" style="left:10px;top:121px;">ALSTON <span class="s8 muted">app-server</span></div><div class="t s10" style="right:10px;top:121px;">VERY FAST</div><div class="t s16" style="left:10px;top:138px;font-size:17px;font-weight:700;">66<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:44px;top:145px;width:56px;height:9px;"><i style="width:66%;"></i></div><div class="t s8" style="left:128px;top:138px;">5H:-- D:11% W:6d 6h</div><div class="t s8" style="left:128px;top:152px;">EARLY 4.8D</div>
+          <div class="hline" style="top:163px;"></div><div class="t s10" style="left:10px;top:166px;">GROK <span class="s8 muted">billing</span></div><div class="t s10" style="right:10px;top:166px;">SLOW</div><div class="t s16" style="left:10px;top:183px;font-size:17px;font-weight:700;">98<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:44px;top:190px;width:56px;height:9px;"><i style="width:98%;"></i></div><div class="t s8" style="left:128px;top:183px;">5H:-- D:15% W:6d 13h</div><div class="t s8" style="left:128px;top:197px;">WARMUP</div>
+          <div class="hline" style="top:208px;"></div><div class="t s10" style="left:10px;top:211px;">OLLAMA <span class="s8 muted">cookie</span></div><div class="t s10" style="right:10px;top:211px;">VERY SLOW</div><div class="t s16" style="left:10px;top:228px;font-size:17px;font-weight:700;">66<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:44px;top:235px;width:56px;height:9px;"><i style="width:65.5%;"></i></div><div class="t s8" style="left:128px;top:228px;">5H:100% D:22%* W:2d 23h</div><div class="t s8" style="left:128px;top:242px;">LEFT 40% ~$2.00</div>
 
           <div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">idle</div><div class="dot" style="left:40px;top:271px;"></div><div class="t s8" style="left:54px;top:272px;">ingest 19:45</div><div class="t s8" style="right:80px;top:272px;">P0</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
         </div>
@@ -249,15 +236,11 @@
         </div></div></div>
         <div class="bezel"><div class="bezel-label"><span>partial</span><span>state</span></div><div class="screen-shell"><div class="screen" aria-label="Partial source state wireframe">
           <div class="t s12" style="left:10px;top:7px;">ALL DETAIL</div><div class="t s8" style="right:12px;top:10px;">PARTIAL 3/5</div><div class="hline thick" style="top:24px;"></div>
-          <div class="t s10" style="left:10px;top:42px;">CLAUDE</div><div class="t s10" style="right:10px;top:42px;">ON PACE</div><div class="t s16" style="left:10px;top:62px;font-size:17px;font-weight:700;">56<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:56px;width:70px;height:9px;"><i style="width:56%;"></i></div><div class="t s8" style="left:128px;top:62px;">5H:73% D:16% W:3d 10h</div>
-          <div class="hline" style="top:72px;"></div>
-          <div class="t s10" style="left:10px;top:87px;">CHIHYI</div><div class="t s10" style="right:10px;top:87px;">SLOW</div><div class="t s16" style="left:10px;top:107px;font-size:17px;font-weight:700;">88<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:101px;width:70px;height:9px;"><i style="width:88%;"></i></div><div class="t s8" style="left:128px;top:107px;">5H:-- D:22% W:4d 1h</div>
-          <div class="hline" style="top:117px;"></div>
-          <div class="t s10" style="left:10px;top:132px;">ALSTON</div><div class="t s16 muted" style="left:10px;top:152px;font-size:17px;font-weight:700;">--</div><div class="t s8 muted" style="left:128px;top:152px;">source fail</div>
-          <div class="hline" style="top:162px;"></div>
-          <div class="t s10" style="left:10px;top:177px;">GROK</div><div class="t s10" style="right:10px;top:177px;">FAST</div><div class="t s16" style="left:10px;top:197px;font-size:17px;font-weight:700;">42<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:50px;top:191px;width:70px;height:9px;"><i style="width:42%;"></i></div><div class="t s8" style="left:128px;top:197px;">5H:-- D:10% W:4d 4h</div>
-          <div class="hline" style="top:207px;"></div>
-          <div class="t s10" style="left:10px;top:222px;">OLLAMA</div><div class="t s16 muted" style="left:10px;top:242px;font-size:17px;font-weight:700;">--</div><div class="t s8 muted" style="left:128px;top:242px;">missing</div>
+          <div class="t s10" style="left:10px;top:31px;">CLAUDE</div><div class="t s10" style="right:10px;top:31px;">ON PACE</div><div class="t s16" style="left:10px;top:48px;font-size:17px;font-weight:700;">3<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:34px;top:55px;width:56px;height:9px;"><i style="width:3%;"></i></div><div class="t s8" style="left:128px;top:48px;">5H:98% D:17% W:4h</div><div class="t s8" style="left:128px;top:62px;">LEFT 1% ~$0.05</div>
+          <div class="hline" style="top:73px;"></div><div class="t s10" style="left:10px;top:76px;">CHIHYI</div><div class="t s10" style="right:10px;top:76px;">VERY FAST</div><div class="t s16" style="left:10px;top:93px;font-size:17px;font-weight:700;">77<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:44px;top:100px;width:56px;height:9px;"><i style="width:77%;"></i></div><div class="t s8" style="left:128px;top:93px;">5H:-- D:12% W:6d 6h</div><div class="t s8" style="left:128px;top:107px;">EARLY 3.8D</div>
+          <div class="hline" style="top:118px;"></div><div class="t s10" style="left:10px;top:121px;">ALSTON</div><div class="t s10" style="right:10px;top:121px;">--</div><div class="t s16" style="left:10px;top:138px;font-size:17px;font-weight:700;">--</div><div class="t s8" style="left:128px;top:138px;">source fail</div><div class="t s8" style="left:128px;top:152px;">SRC FAIL</div>
+          <div class="hline" style="top:163px;"></div><div class="t s10" style="left:10px;top:166px;">GROK</div><div class="t s10" style="right:10px;top:166px;">SLOW</div><div class="t s16" style="left:10px;top:183px;font-size:17px;font-weight:700;">98<span class="s10" style="font-size:11px;">%</span></div><div class="bar" style="left:44px;top:190px;width:56px;height:9px;"><i style="width:98%;"></i></div><div class="t s8" style="left:128px;top:183px;">5H:-- D:15% W:6d 13h</div><div class="t s8" style="left:128px;top:197px;">WARMUP</div>
+          <div class="hline" style="top:208px;"></div><div class="t s10" style="left:10px;top:211px;">OLLAMA</div><div class="t s10" style="right:10px;top:211px;">--</div><div class="t s16" style="left:10px;top:228px;font-size:17px;font-weight:700;">--</div><div class="t s8" style="left:128px;top:228px;">missing</div><div class="t s8" style="left:128px;top:242px;">MISSING</div>
           <div class="hline bottom"></div><div class="t s10" style="left:10px;top:270px;">partial</div><div class="dot" style="left:58px;top:271px;"></div><div class="t s8" style="left:72px;top:272px;">3/5 sources</div><div class="battery"><div class="battery-shape"><i></i></div><span>72%</span></div>
         </div></div></div>
       </div>
@@ -268,6 +251,7 @@
     <h3>現行設計與刷新契約</h3>
     <ul>
       <li><strong>頁面：</strong>P0 Combined → P1 Trend → P2 Claude → P3 Chihyi → P4 Alston → P5 Grok → P6 Ollama；BOOT 短按與每 5 分鐘自動循環。</li>
+      <li><strong>預測：</strong>依本週累積平均消耗顯示 EARLY x.xD 或 LEFT xx% ~$x.xx；USD 為四週制訂閱費分攤估值，非退款。剛重置顯示 WARMUP，過期或無效資料不預測。</li>
       <li><strong>資料：</strong>每 15 分鐘開 Wi-Fi 拉取；BOOT 短按停止操作 10 秒後額外更新一次，完成後 radio off。</li>
       <li><strong>來源：</strong><code>claude</code>、<code>codex:chihyi</code>、<code>codex:Alston</code>、<code>grok</code>、<code>ollama</code>；舊 <code>codex</code> key 已不存在（2026-08-26 起）。</li>
       <li><strong>恢復：</strong><code>/data</code> 為 0 points 時呼叫 <code>POST /trigger</code>，等待後只重試一次；失敗狀態保留 Serial 與畫面診斷。</li>
