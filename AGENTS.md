@@ -77,7 +77,7 @@ Type-C 或 18650 插拔時勿以螢幕受力；文件不得鼓勵暴力拆裝或
 - 功能優先序：可靠顯示與方向對比 → 時鐘／日曆／溫濕度／電池 → 頁面與按鍵 → Wi-Fi／MQTT／HA → 語音與 AI。
 - 靜態畫面要避免無意義全屏刷新；儀表預設約 30–60 秒級更新，互動時才即時。連續 Wi-Fi、語音、高 FPS 動畫都要標註高耗電。
 - aiusage 的核心語義是「週剩餘 % = `100 − used_weekly_pct`」；不要在 RLCD 上原樣渲染彩色網頁。
-- 資料源是 `https://aiusage-web.zeabur.app/data`，背後為雲端 SQLite（Zeabur persistent volume，2026-08-16 起），由本機 `usage-history.db` upsert 累積。韌體在 `/data` 返回 0 points 時自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試一次；所有失敗路徑有 Serial 診斷輸出。
+- 資料源是 `https://aiusage.apps.qianyinexus.com/data`（Contabo SQLite，2026-10-22 起；Zeabur 舊站已停用），由本機 `usage-history.db` upsert 累積。韌體在 `/data` 返回 0 points 時仍嘗試 `POST /trigger` 再重試一次；新站 `/trigger` 需 Basic Auth、韌體不帶帳密（預期 401），實際恢復靠 Mac 排程同步。所有失敗路徑有 Serial 診斷輸出。
   反例：不要假設雲端 `/data` 永遠有資料；韌體必須能處理空回應並自動恢復（2026-08-16 事故，完整經過見 `docs/power-and-progress.md`）。
 - `secrets.h` 可以在本機覆寫 Wi-Fi，但不得提交；只提交 `secrets.h.example`。
 

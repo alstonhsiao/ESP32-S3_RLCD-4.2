@@ -1,10 +1,10 @@
 /*
  * aiusage_home — AI week-remain dashboard on Waveshare ESP32-S3-RLCD-4.2
  *
- * Data: GET https://aiusage-web.zeabur.app/data
+ * Data: GET https://aiusage.apps.qianyinexus.com/data
  *   Cloud SQLite (persistent volume) fed by local usage-history.db via upsert.
- *   If /data returns 0 points, firmware auto-triggers POST /trigger to kick
- *   KM → notify_all → sync_usage_web, then re-fetches.
+ *   If /data returns 0 points, firmware attempts POST /trigger, then re-fetches.
+ *   Contabo /trigger requires Basic Auth; no credentials are sent (expected 401).
  *   The payload is scanned as a byte stream and never buffered whole: it has
  *   outgrown internal RAM (686 KB by 2026-08-30), which crashed the WiFi PHY
  *   timer alloc with ESP_ERR_NO_MEM. Only the last point + the 10d trend grid
@@ -71,10 +71,10 @@
 #include "usage_scan.h"
 #include "usage_forecast.h"
 
-// Data source: cloud SQLite (persistent volume on Zeabur), fed by local SQLite upsert.
-// GET /data reads from cloud DB; POST /trigger kicks KM to query AI quota + sync.
-static const char* DATA_URL = "https://aiusage-web.zeabur.app/data";
-static const char* TRIGGER_URL = "https://aiusage-web.zeabur.app/trigger";
+// Data source: cloud SQLite (persistent storage on Contabo), fed by local SQLite upsert.
+// GET /data reads from cloud DB; POST /trigger requests a quota query + sync.
+static const char* DATA_URL = "https://aiusage.apps.qianyinexus.com/data";
+static const char* TRIGGER_URL = "https://aiusage.apps.qianyinexus.com/trigger";
 static const uint32_t POLL_MS = 900000;      // fetch cloud data every 15 minutes
 static const uint32_t TRIGGER_RETRY_MS = 8000; // wait for KM→sync round-trip before re-fetch
 static const uint32_t RENDER_MS = 60000;     // fallback redraw if NTP not ready
@@ -735,6 +735,8 @@ static bool parseStream(NetworkClient& stream, int contentLen) {
 }
 
 // ---- fetch ----
+// Contabo /trigger requires Basic Auth; intentionally omit credentials.
+// Expected HTTP 401 is logged to Serial only; normal /data polling is unaffected.
 static bool triggerUpstreamRefresh() {
   WiFiClientSecure tClient;
   tClient.setInsecure();

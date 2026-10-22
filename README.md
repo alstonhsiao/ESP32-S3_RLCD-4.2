@@ -16,8 +16,8 @@
 | Hello 螢幕 | ✅ `firmware/hello_rlcd` |
 | AI 用量儀表 | `firmware/aiusage_home` — 現行程式為 P0–P6（五來源）；2026-08-26 從 4 源擴充為 5 源（新增 `codex:Alston`，原 `codex` 改為 `codex:chihyi`），P0 改為五列橫排；P1 趨勢五線；P2–P6 各源圖表；趨勢緩衝擴為完整 10 天／最多 720 點（20 分鐘格降取樣），理想線可從真實 reset 錨點滿高繪出 |
 | Web 用量分析 | `web/aiusage-analysis.html` — 目前仍為四源分圖（含舊 `codex` key）、reset 與斜率判定；韌體／wireframe 已是五源，原型尚未同步 |
-| 資料源 | `https://aiusage-web.zeabur.app/data`（雲端 SQLite + persistent volume；週剩餘 % = 100 − used） |
-| 資料可靠性 | ✅ 韌體在 `/data` 返回 0 points 時自動 `POST /trigger` 觸發 KM 查詢額度 + sync，再重試 |
+| 資料源 | `https://aiusage.apps.qianyinexus.com/data`（Contabo 雲端 SQLite + persistent storage；週剩餘 % = 100 − used） |
+| 資料可靠性 | 韌體在 `/data` 返回 0 points 時仍嘗試 `POST /trigger` 再重試；新站需 Basic Auth，未帶帳密預期 401，須等 Mac 排程同步補資料 |
 | 換頁 | **短按 BOOT**；長按 3s 配網（AP `AIUsage-RLCD`，僅 2.4 GHz） |
 | 電池粗估 | 短測與追加觀測結果不同 → 滿電約兩至三天的區間推算（完整長測待做，見 [`docs/power-and-progress.md`](docs/power-and-progress.md)） |
 
@@ -89,7 +89,7 @@ BOOT 靠 USB 側鍵（不是 PWR）；螢幕需環境光。
 - [x] Hello RLCD
 - [x] aiusage 基礎頁面、五來源最近 10 天圖表與 BOOT 翻頁
 - [x] 雲端資料源改用 SQLite + persistent volume（2026-08-16）
-- [x] 韌體自動恢復：`/data` 空資料時自動觸發上游刷新（2026-08-16）
+- [x] 韌體自動恢復：`/data` 空資料時嘗試觸發上游刷新（2026-08-16；2026-10-22 遷移後 `/trigger` 預期 401，目前僅重試並等 Mac 排程補資料）
 - [x] 趨勢視窗擴為完整 10 天（最多 720 點、20 分鐘格降取樣），P2–P6 理想線取得真實 reset 錨點，修復各頁虛線陡度不一（2026-08-25）
 - [x] 五來源擴充：新增 `codex:Alston`，原 `codex` 改為 `codex:chihyi`；P0 改五列橫排、P1 五線、P2–P6 各源圖表（2026-08-26）
 

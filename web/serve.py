@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 
-DATA_URL = "https://aiusage-web.zeabur.app/data"
+DATA_URL = "https://aiusage.apps.qianyinexus.com/data"
 WEB_ROOT = Path(__file__).resolve().parent
 
 

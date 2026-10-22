@@ -1,6 +1,8 @@
 # aiusage_home — P0–P6
 
-從 `https://aiusage-web.zeabur.app/data` 拉 JSON，在 RLCD 畫 **週剩餘 %**（`100 − used_weekly_pct`）。
+從 `https://aiusage.apps.qianyinexus.com/data` 拉 JSON，在 RLCD 畫 **週剩餘 %**（`100 − used_weekly_pct`）。
+
+Contabo 的 `/data` 公開可用；`/trigger` 需要 Basic Auth，韌體刻意不帶帳密，預期回 401 並只記錄 Serial，不影響正常輪詢。空資料時保留 trigger／重試路徑，但目前無法主動補資料，須等 Mac 排程同步。
 
 ## 換頁（BOOT 鍵）
 

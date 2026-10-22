@@ -99,3 +99,11 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 - 實際 U8g2 字型與 P0 程式檢查九種情境（正常、部分失敗、最寬數值、過期、剛重置、額度用完、reset 到期、無效資料與 UPD 預留）：文字無跨欄或重疊；89 項計算檢查通過。正常／partial 的 1bpp 輸出轉為 `ui/all-detail-d.svg` 與 `ui/all-detail-d-partial.svg`，瀏覽器載入後逐像素一致；現行 wireframe 與 README／INDEX 同步。五款比較稿保留並標示 D 已選用。
 - 鎖定 flash-firmware 腳本編譯／上傳、hash 驗證成功，程式 1,225,019 bytes（38%），global RAM 115,656 bytes（35%）。腳本因 25 秒內未等到完整開機字串回 code 4，當時已收到 HTTP 200；接續監看收到 CHIHYI／ALSTON／GROK 預測、WiFi radio off 與 setup done，確認資料已解析、預測與啟動完成。
 - 補驗限制：接續 raw Serial 監聽漏掉 poll ok 前段，但已收到預測與 setup done；再以 pyserial 開啟監聽 110 秒未產生新的開機輸出（未主動觸發重置），因此未取得一份完整的新開機紀錄。沒有繼續重試；此次上傳 hash 與已捕捉的啟動完成紀錄仍可確認燒錄／資料啟動成功。
+
+### 2026-10-22：資料源遷移至 Contabo
+
+- 原因：usage-web 已從 Zeabur 搬至 Contabo，舊站回 502，造成 RLCD 無法更新。依使用者選定的方案 A，韌體 `DATA_URL`／`TRIGGER_URL` 改用 `https://aiusage.apps.qianyinexus.com`，保留 `/data`／`trigger` 路徑；同步主 README、韌體 README、資料語義文件、Web 本機代理及 HTML 直接下載備援網址。
+- 已知且接受的限制：新站 `GET /data` 公開可用，`POST /trigger` 需要 Basic Auth；韌體刻意不帶帳密，空資料時仍嘗試 trigger，預期 401 並只記 Serial，再重試一次 `/data`。因此空資料自動恢復目前只剩重試、等待 Mac 排程同步補資料，無法主動觸發上游查詢；本次正常非空輪詢未呼叫 trigger，也未強制製造空資料測試。
+- 僅修改網址與註解，未改解析、15 分鐘輪詢、分鐘級刷新、5 分鐘翻頁、10 秒互動延遲更新或 Wi-Fi radio-off 策略；R1 400×300、1bpp 與環境光閱讀假設維持原狀。刷新與耗電策略未變，實際耗電未另行量測；約 3.5 MB 的 HTTPS 下載仍需較長連線時間。
+- 驗證：依鎖定 `flash-firmware` 腳本在 `/dev/cu.usbmodem101` 編譯／上傳成功，程式 1,225,035 bytes（38%），global RAM 115,656 bytes（35%），上傳各區段均顯示 `Hash of data verified.`。腳本 25 秒 Serial 檢查未等到預期字串，exit code 4；已收到 `poll: HTTP 200 content-length=-1`，另接續監看並以一次 RTS reset 補取完整開機紀錄。
+- Serial 補驗（接續監看完整 150 秒）：`poll: stream scanned 3499470 bytes, pts=4963 trend=397`、`poll ok: pts=4963 trend=397 C=38 H=51 A=85 G=2 O=100`，接著五源預測、`WiFi radio off` 與 `aiusage_home: setup done` 正常；未觀察到 HTTP 錯誤。排除 build、.git、AGENTS.md 與本檔歷史紀錄後，舊網域搜尋無結果；韌體去除註解後比對確認只變更 URL，`web/serve.py` 語法與 `git diff --check` 通過。未修改 AGENTS.md，沒有 commit／push。

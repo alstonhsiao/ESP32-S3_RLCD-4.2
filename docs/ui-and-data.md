@@ -14,12 +14,14 @@
 
 | 項目 | 內容 |
 | --- | --- |
-| API | `https://aiusage-web.zeabur.app/data`；健康檢查為 `/health` |
+| API | `https://aiusage.apps.qianyinexus.com/data`；健康檢查為 `/health` |
 | 來源 | `claude`、`codex:chihyi`、`codex:Alston`、`grok`、`ollama` |
 | 週數值 | 週剩餘 % = `100 − used_weekly_pct` |
 | 5h 數值 | 有滾動窗資料才顯示；沒有時顯示 `--` |
 | 節奏標籤 | 五級英文（2026-09-01 起與 usage-web 對齊）：`VERY SLOW / SLOW / ON PACE / FAST / VERY FAST`；退化狀態 `RESET`、`--`／`N/A` 保留 |
 | 上游 | 本機 ingest 處理敏感資料，裝置只接收衍生資料 |
+
+Contabo 的 `/data` 公開可用；`/trigger` 需要 Basic Auth，韌體刻意不帶帳密，預期回 401 並只記錄 Serial，不影響正常輪詢。空資料時保留 trigger／重試路徑，但目前無法主動補資料，須等 Mac 排程同步。
 
 不要把彩色 Web UI 原樣搬到 RLCD。資料若繼續膨脹，優先讓 API 只回最新資料與有限歷史點，並保留離線／stale 狀態。
 
