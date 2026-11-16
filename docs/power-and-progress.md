@@ -107,3 +107,11 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 - 僅修改網址與註解，未改解析、15 分鐘輪詢、分鐘級刷新、5 分鐘翻頁、10 秒互動延遲更新或 Wi-Fi radio-off 策略；R1 400×300、1bpp 與環境光閱讀假設維持原狀。刷新與耗電策略未變，實際耗電未另行量測；約 3.5 MB 的 HTTPS 下載仍需較長連線時間。
 - 驗證：依鎖定 `flash-firmware` 腳本在 `/dev/cu.usbmodem101` 編譯／上傳成功，程式 1,225,035 bytes（38%），global RAM 115,656 bytes（35%），上傳各區段均顯示 `Hash of data verified.`。腳本 25 秒 Serial 檢查未等到預期字串，exit code 4；已收到 `poll: HTTP 200 content-length=-1`，另接續監看並以一次 RTS reset 補取完整開機紀錄。
 - Serial 補驗（接續監看完整 150 秒）：`poll: stream scanned 3499470 bytes, pts=4963 trend=397`、`poll ok: pts=4963 trend=397 C=38 H=51 A=85 G=2 O=100`，接著五源預測、`WiFi radio off` 與 `aiusage_home: setup done` 正常；未觀察到 HTTP 錯誤。排除 build、.git、AGENTS.md 與本檔歷史紀錄後，舊網域搜尋無結果；韌體去除註解後比對確認只變更 URL，`web/serve.py` 語法與 `git diff --check` 通過。未修改 AGENTS.md，沒有 commit／push。
+
+### 2026-11-16：CHIHYI／ALSTON 相同數據調查（登入身分錯置，尚未修復）
+
+- 雲端 `/data` 07:40:23（台北時間）仍為 CHIHYI 週已用 22%、ALSTON 9%；07:50:23 起兩者同為 9%，週重置時間也相同。15:50:23 快照兩者皆為已用 26%／剩餘 74%。重複資料已存在上游，韌體仍以不同 source key 讀取。
+- 本機唯讀核對：採集設定仍將 chihyi 對應 `~/.codex`、Alston 對應 `~/.codex-alston`，但兩份 `auth.json` 的登入身分與 `account_id` 均屬 Alston。`~/.codex/auth.json` 修改時間為今日 07:46:19，與下一次採集開始重複的時間吻合；未輸出 token 或完整 account ID。
+- 採集程式 `../keyboardMaestro/autousage/scripts/notify_all.sh` 依設定標籤命名來源，未驗證真實登入身分。`../keyboardMaestro/docs/agent-progress.md` 的 2026-11-11 條目記載同類事故；目前 `../ai-dev-env/tools/codex/codex-multi-account.zsh` 仍依 `~/.codex-active` 覆寫 `CODEX_HOME`，`codex-whoami` 只顯示選定標籤。此為可能重犯路徑，但本次沒有證據確認今日實際執行了哪條登入命令。
+- 待修復：讓 chihyi 專用目錄重新登入正確帳號，繞過會覆寫目錄的 shell wrapper，登入後核對身分；採集端宜加入帳號身分驗證。07:50 起 CHIHYI 的錯置歷史須另行決定如何標記／處理，不可當成真實 chihyi 用量。
+- 本次只調查並追加紀錄，未修改登入憑證、採集程式、本機／雲端歷史或韌體；資料拉取、空資料重試、刷新、Wi-Fi 與功耗策略均未變，未 commit／push。
