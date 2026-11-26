@@ -17,7 +17,8 @@ static const long kStaleSec = 6L * 3600L;
 static const double kWarmupDays = 0.5;     // elapsed < 12h
 static const long kMinEpoch = 100000L;
 
-// Plan prices, source order: CLAUDE, CHIHYI, ALSTON, GROK, OLLAMA.
+// Plan prices, source order: CLAUDE, CHIHYI, ALSTON, GROK, OLLAMA, AGY.
+// AGY = Google AI Pro (US$19.99/mo, rounded to 20).
 // Edit here. Weekly estimate = monthly/4 * rounded forecast remain%.
 inline double monthlyPlanUsd(int sourceIndex) {
   switch (sourceIndex) {
@@ -26,6 +27,7 @@ inline double monthlyPlanUsd(int sourceIndex) {
     case 2: return 21.0;
     case 3: return 30.0;
     case 4: return 20.0;
+    case 5: return 20.0;
     default: return -1.0;
   }
 }

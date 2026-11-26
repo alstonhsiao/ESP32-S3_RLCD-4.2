@@ -86,7 +86,8 @@ static void checkCost() {
   expect(forecastCostUsd(-4.0, 20.0) == 0.0, "cost clamps negative to 0");
   expect(forecastCostUsd(50.0, -1.0) < 0.0, "negative monthly is null");
   expect(monthlyPlanUsd(0) == 20 && monthlyPlanUsd(1) == 21 && monthlyPlanUsd(2) == 21
-             && monthlyPlanUsd(3) == 30 && monthlyPlanUsd(4) == 20,
+             && monthlyPlanUsd(3) == 30 && monthlyPlanUsd(4) == 20
+             && monthlyPlanUsd(5) == 20 && monthlyPlanUsd(6) < 0,
          "default plan prices");
 }
 

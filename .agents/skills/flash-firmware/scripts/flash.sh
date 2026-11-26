@@ -173,7 +173,7 @@ except OSError as e:
 got = b""
 t0 = time.time()
 try:
-    while time.time() - t0 < 25:
+    while time.time() - t0 < 120:  # 5+ MB /data scan takes 30-60s+ before "poll ok:"
         r, _, _ = select.select([fd], [], [], 0.5)
         if fd not in r:
             continue

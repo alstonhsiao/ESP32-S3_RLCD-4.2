@@ -12,9 +12,9 @@
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
- *   P0 Combined — 5 vertical columns: remain% + 5h + day% + reset + week forecast
- *   P1 Trend  — last 10d remain% polylines (5 series, distinct 1bpp styles)
- *   P2-P6    — one 10d remain% chart per source, reset-aware ideal slope
+ *   P0 Combined — 6 vertical columns: remain% + 5h + day% + reset + week forecast
+ *   P1 Trend  — last 10d remain% polylines (6 series, distinct 1bpp styles)
+ *   P2-P7    — one 10d remain% chart per source, reset-aware ideal slope
  * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes
  * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD)
  *
@@ -50,8 +50,8 @@
 
 #define W 400
 #define H 300
-#define N_SOURCES 5
-#define PAGE_COUNT 7
+#define N_SOURCES 6
+#define PAGE_COUNT 8
 #define CHART_PAGE_BASE 2
 // P0 pace is the usage-web remaining gap (usage_forecast.h): ±3 ON PACE,
 // ±3..±10 SLOW/FAST, strictly beyond ±10 VERY. P2–P6 keep the slope rings.
@@ -109,6 +109,7 @@ struct UsageSnapshot {
     {"ALSTON", "", false, false, -1, -1, 0, 0},
     {"GROK",   "", false, false, -1, -1, 0, 0},
     {"OLLAMA", "", false, false, -1, -1, 0, 0},
+    {"AGY",    "", false, false, -1, -1, 0, 0},
   };
   // trend: remain% 0..100, or -1 missing; chronological oldest→newest
   int8_t trend[N_SOURCES][TREND_N];
@@ -370,7 +371,7 @@ static const char* linkLabel(LinkState s) {
 // UI needs: the last point's per-source values and the 10d trend buffer.
 // Host-verified against the live payload: all 1039 points, every field
 // identical to the previous full-JSON parse.
-static const char* SRC_KEYS[N_SOURCES] = {"claude", "codex:chihyi", "codex:Alston", "grok", "ollama"};
+static const char* SRC_KEYS[N_SOURCES] = {"claude", "codex:chihyi", "codex:Alston", "grok", "ollama", "agy"};
 
 static TrendSlot gScanRing[TREND_N];
 static int gScanRingHead = 0;
@@ -805,11 +806,11 @@ static bool pollData() {
     if (httpFetchParse("poll retry") && gSnap.valid && gSnap.pointCount > 0) {
       gLink = LinkState::Online;
       gLastErr[0] = 0;
-      Serial.printf("poll ok (after trigger): pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f\n",
+      Serial.printf("poll ok (after trigger): pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f Y=%.0f\n",
                     gSnap.pointCount, gSnap.trendN,
                     gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
                     gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
-                    gSnap.src[4].remainWeek);
+                    gSnap.src[4].remainWeek, gSnap.src[5].remainWeek);
       logCombinedForecasts();
       return true;
     }
@@ -820,11 +821,11 @@ static bool pollData() {
 
   gLink = LinkState::Online;
   gLastErr[0] = 0;
-  Serial.printf("poll ok: pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f\n",
+  Serial.printf("poll ok: pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f Y=%.0f\n",
                 gSnap.pointCount, gSnap.trendN,
                 gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
                 gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
-                gSnap.src[4].remainWeek);
+                gSnap.src[4].remainWeek, gSnap.src[5].remainWeek);
   logCombinedForecasts();
   return true;
 }
@@ -924,6 +925,17 @@ static void plotSegment(int x0, int y0, int x1, int y1, int style) {
         u8g2.drawPixel(x, y);
       }
     }
+  } else if (style == 5) {
+    // thin dotted: single pixel every 3 steps
+    int dx = x1 - x0, dy = y1 - y0;
+    int steps = max(abs(dx), abs(dy));
+    if (steps <= 0) {
+      u8g2.drawPixel(x0, y0);
+      return;
+    }
+    for (int i = 0; i <= steps; i += 3) {
+      u8g2.drawPixel(x0 + (int)((long)dx * i / steps), y0 + (int)((long)dy * i / steps));
+    }
   } else {
     // thick solid (double line)
     u8g2.drawLine(x0, y0, x1, y1);
@@ -968,13 +980,14 @@ static void renderTrend() {
   u8g2.drawHLine(8, 24, W - 16);
   u8g2.drawHLine(8, 25, W - 16);
 
-  // legend (5 sources: CLAUDE, CHIHYI, ALSTON, GROK, OLLAMA)
-  u8g2.setFont(u8g2_font_6x13_tf);
+  // legend (6 sources: CLAUDE, CHIHYI, ALSTON, GROK, OLLAMA, AGY); 6x10 fits one row
+  u8g2.setFont(u8g2_font_6x10_tf);
   u8g2.drawStr(10, 40, "- CLAUDE");
-  u8g2.drawStr(90, 40, ":: CHIHYI");
-  u8g2.drawStr(170, 40, "-. ALSTON");
-  u8g2.drawStr(260, 40, "= GROK");
-  u8g2.drawStr(330, 40, "== OLLAMA");
+  u8g2.drawStr(70, 40, ":: CHIHYI");
+  u8g2.drawStr(136, 40, "-. ALSTON");
+  u8g2.drawStr(202, 40, "= GROK");
+  u8g2.drawStr(250, 40, "== OLLAMA");
+  u8g2.drawStr(316, 40, ".. AGY");
 
   // chart taller after removing NOW strip
   const int left = 40, top = 50, cw = 346, ch = 188;
@@ -997,6 +1010,7 @@ static void renderTrend() {
     drawTrendSeries(left, top, cw, ch, 2, 4);  // ALSTON thin dashed
     drawTrendSeries(left, top, cw, ch, 3, 2);  // GROK thick dash
     drawTrendSeries(left, top, cw, ch, 4, 3);  // OLLAMA double solid
+    drawTrendSeries(left, top, cw, ch, 5, 5);  // AGY thin dotted
   } else {
     u8g2.setFont(u8g2_font_6x13_tf);
     strCenter(left + cw / 2, top + ch / 2, "not enough points");
@@ -1298,7 +1312,8 @@ static void renderSourceTrend(int srcIdx) {
   drawBottomBar("R=reset D=due");
 }
 
-// P0 — selected layout D: five 76px columns on U8G2_R1 (400x300 / 1bpp).
+// P0 — layout D widened to six 64px columns on U8G2_R1 (400x300 / 1bpp).
+// Balance font drops helvB18 → helvB14 so "100%" fits the ~58px interior.
 // Names at y=43, balance/bar y=78/88, pace y=109/123, forecast y=166/182,
 // 5H/D/W y=208/228/248. Content ends above the unchanged footer at y=258.
 // Layout only: minute redraw, polling, radio-off and prediction math unchanged.
@@ -1330,20 +1345,20 @@ static void renderCombined() {
   time_t now = time(nullptr);
   for (int i = 0; i < N_SOURCES; i++) {
     const SourceUi& s = gSnap.src[i];
-    const int x = 10 + i * 76;
-    const int center = x + 36;
-    const int right = x + 67;
+    const int x = 10 + i * 64;
+    const int center = x + 30;
+    const int right = x + 58;
     const bool usable = s.present && s.ok && s.remainWeek >= 0.0f && s.remainWeek <= 100.0f;
     if (i > 0) u8g2.drawVLine(x - 2, 33, 220);
 
-    u8g2.setFont(u8g2_font_helvB10_tf);
+    u8g2.setFont(u8g2_font_helvB08_tf);  // helvB10 OLLAMA/ALSTON touch the 64px separators
     strCenter(center, 43, s.name);
     char balance[12];
     if (usable) snprintf(balance, sizeof(balance), "%.0f%%", s.remainWeek);
     else snprintf(balance, sizeof(balance), "--");
-    u8g2.setFont(u8g2_font_helvB18_tf);  // 100% is 62px; column interior is 72px
+    u8g2.setFont(u8g2_font_helvB14_tf);  // 100% must stay inside the ~58px interior
     strCenter(center, 78, balance);
-    drawBar(x + 5, 88, 62, 7, usable ? s.remainWeek / 100.0f : 0.0f);
+    drawBar(x + 4, 88, 54, 7, usable ? s.remainWeek / 100.0f : 0.0f);
 
     char pace[16];
     snprintf(pace, sizeof(pace), "%s", combinedPace(s));
@@ -1352,7 +1367,7 @@ static void renderCombined() {
     u8g2.setFont(u8g2_font_helvB08_tf);
     strCenter(center, 109, pace);
     if (paceSecond) strCenter(center, 123, paceSecond);
-    u8g2.drawHLine(x + 5, 135, 62);
+    u8g2.drawHLine(x + 4, 135, 54);
 
     u8g2.setFont(u8g2_font_5x8_tf);
     strCenter(center, 148, "FORECAST");
@@ -1377,11 +1392,11 @@ static void renderCombined() {
     if (usable) fmtReset(s.resetWeek, resetText, sizeof(resetText));
     else snprintf(resetText, sizeof(resetText), "--");
     u8g2.setFont(u8g2_font_6x10_tf);
-    u8g2.drawStr(x + 5, 208, "5H");
+    u8g2.drawStr(x + 4, 208, "5H");
     strRight(right, 208, five);
-    u8g2.drawStr(x + 5, 228, "D");
+    u8g2.drawStr(x + 4, 228, "D");
     strRight(right, 228, dayText);
-    u8g2.drawStr(x + 5, 248, "W");
+    u8g2.drawStr(x + 4, 248, "W");
     strRight(right, 248, resetText);
   }
 
@@ -1568,7 +1583,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("aiusage_home: boot (P0-P6 / 5m page / 15m poll / radio-off)");
+  Serial.println("aiusage_home: boot (P0-P7 / 5m page / 15m poll / radio-off)");
 
   pinMode(BTN_BOOT, INPUT_PULLUP);
   gLastBtn = digitalRead(BTN_BOOT);

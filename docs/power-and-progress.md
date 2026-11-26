@@ -26,7 +26,7 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 | 領域 | 現況 |
 | --- | --- |
 | 基建 | SPEC、Arduino + U8g2、Hello RLCD 與 aiusage 多頁已完成 |
-| aiusage | 現行程式為 P0 Combined、P1 Trend、P2–P6 五源最近 10 天圖表；2026-08-26 從 4 源擴充為 5 源（新增 codex:Alston），P0 改五列橫排；待實機確認 |
+| aiusage | 現行程式為 P0 Combined、P1 Trend、P2–P7 六源最近 10 天圖表（2026-11-26 新增 agy）；2026-08-26 從 4 源擴充為 5 源（新增 codex:Alston），P0 改五列橫排；待實機確認 |
 | UX | HTML wireframe 已同步現行 P0–P6；P0 Combined 五列間距、P1 五線可讀性與軟體反顯仍待實機確認 |
 | 穩定度 | HTTPS／較大 JSON、離線 stale、重試與精簡 API 待驗證 |
 | 感測與互動 | SHTC3、KEY 第二操作、天氣或本機 proxy 待規劃 |
@@ -115,3 +115,10 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 - 採集程式 `../keyboardMaestro/autousage/scripts/notify_all.sh` 依設定標籤命名來源，未驗證真實登入身分。`../keyboardMaestro/docs/agent-progress.md` 的 2026-11-11 條目記載同類事故；目前 `../ai-dev-env/tools/codex/codex-multi-account.zsh` 仍依 `~/.codex-active` 覆寫 `CODEX_HOME`，`codex-whoami` 只顯示選定標籤。此為可能重犯路徑，但本次沒有證據確認今日實際執行了哪條登入命令。
 - 待修復：讓 chihyi 專用目錄重新登入正確帳號，繞過會覆寫目錄的 shell wrapper，登入後核對身分；採集端宜加入帳號身分驗證。07:50 起 CHIHYI 的錯置歷史須另行決定如何標記／處理，不可當成真實 chihyi 用量。
 - 本次只調查並追加紀錄，未修改登入憑證、採集程式、本機／雲端歷史或韌體；資料拉取、空資料重試、刷新、Wi-Fi 與功耗策略均未變，未 commit／push。
+
+### 2026-11-26：新增 AGY 來源（六欄）
+
+- 上游 `/data` 已有 `agy`（Google AI Pro）。韌體新增第 6 來源、P0 改六個 64px 欄、P1 加細點線、P7 為 AGY 單源圖；月費估 20 USD。設計與座標見 `docs/ui-and-data.md`「AGY 來源與 ALL DETAIL 六欄」。
+- 實機燒錄成功，Serial：`poll ok: ... O=98 Y=96`、`P0 AGY: remain=96.3 ... forecast=LEFT 95% ~$4.75`。
+- 同日修正 `flash.sh` 誤報 exit 4：Serial 驗收窗 25→120 秒（5.4 MB `/data` 掃描約 30–60 秒以上才出 `poll ok:`；75 秒仍曾逾時，且埠重開時常截掉 boot 字串前段）。
+- 不改資料拉取頻率、Wi-Fi 策略或刷新節奏；耗電不變。P0 欄名改 helvB08 以保留欄界留白；`ui/` wireframe 與六欄 SVG 快照已同步（host 端 U8g2 實際字型輸出）。待辦：實機目視確認六欄可讀性。
