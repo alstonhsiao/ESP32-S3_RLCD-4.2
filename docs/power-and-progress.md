@@ -121,4 +121,4 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 - 上游 `/data` 已有 `agy`（Google AI Pro）。韌體新增第 6 來源、P0 改六個 64px 欄、P1 加細點線、P7 為 AGY 單源圖；月費估 20 USD。設計與座標見 `docs/ui-and-data.md`「AGY 來源與 ALL DETAIL 六欄」。
 - 實機燒錄成功，Serial：`poll ok: ... O=98 Y=96`、`P0 AGY: remain=96.3 ... forecast=LEFT 95% ~$4.75`。
 - 同日修正 `flash.sh` 誤報 exit 4：Serial 驗收窗 25→120 秒（5.4 MB `/data` 掃描約 30–60 秒以上才出 `poll ok:`；75 秒仍曾逾時，且埠重開時常截掉 boot 字串前段）。
-- 不改資料拉取頻率、Wi-Fi 策略或刷新節奏；耗電不變。P0 欄名改 helvB08 以保留欄界留白；`ui/` wireframe 與六欄 SVG 快照已同步（host 端 U8g2 實際字型輸出）。待辦：實機目視確認六欄可讀性。
+- 不改資料拉取頻率、Wi-Fi 策略或刷新節奏；耗電不變。P0 欄名改 helvB08 以保留欄界留白；`ui/` wireframe 與六欄 SVG 快照已同步（host 端 U8g2 實際字型輸出）。2026-11-26 使用者實機目視確認六欄（含 helvB08 欄名）清楚可讀。
