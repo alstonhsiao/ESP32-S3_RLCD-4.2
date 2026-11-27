@@ -33,7 +33,7 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 
 - 從 aiusage-web 的 `/data` 取得衍生 JSON，畫 P0 Combined、P1 Trend，以及 P2–P6 五個來源分頁圖表。雲端 `/data` 背後是 Zeabur persistent volume 上的 SQLite（2026-08-16 起），由本機 `usage-history.db` upsert 累積，重佈署不再清空。資料來源為 `claude`、`codex:chihyi`、`codex:Alston`、`grok`、`ollama`（2026-08-26 起從 4 源擴充為 5 源）。
 - 短按 BOOT（GPIO0）循環換頁；長按約 3 秒進入 WiFiManager AP `AIUsage-RLCD`。
-- 短按換頁會重設延遲更新計時；停止操作約 10 秒後在背景拉取一次新資料，拉取期間右上角顯示 `SYNC`，新資料上屏後顯示 `UPD` 3 秒。連續翻頁只在最後一次按鍵後觸發一次，但仍比單純等待 15 分鐘輪詢耗電。
+- 短按換頁會重設延遲更新計時；停止操作約 5 秒後在背景拉取一次新資料，拉取期間右上角顯示 `SYNC`，新資料上屏後顯示 `UPD` 1 秒（2026-11-27 由 3 秒縮短）。連續翻頁只在最後一次按鍵後觸發一次，但仍比單純等待 15 分鐘輪詢耗電。
 - 所有輪詢（開機首拉、15 分鐘排程、手動翻頁後的延遲拉取）都在背景 FreeRTOS task 執行：`loop()` 持續每 50ms 掃描 BOOT，輪詢進行中換頁仍立即生效，不會再吞按鍵。輪詢中長按 BOOT 會排隊，待輪詢結束後才開 portal。
 - 資料以較長間隔輪詢，畫面通常在分鐘變更時重畫，頁面也會自動輪替；目前 P0–P7 每 5 分鐘換頁，完整一輪約 40 分鐘，實際常數以 `aiusage_home.ino` 為準。
 - 拉資料時才開 Wi-Fi，完成後關閉 radio；這是目前 always-on 電池策略的一部分。
@@ -43,7 +43,7 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 
 | 操作 | 行為 |
 | --- | --- |
-| 短按 BOOT | P0 Combined → P1 Trend → P2–P6 五個來源圖表循環；停止操作約 10 秒後拉取新資料 |
+| 短按 BOOT | P0 Combined → P1 Trend → P2–P6 五個來源圖表循環；停止操作約 5 秒後拉取新資料 |
 | 長按 BOOT 約 3 秒 | 顯示 AP 資訊，手機連 `AIUsage-RLCD`，開 `192.168.4.1` 配網 |
 | Wi-Fi | 只支援 2.4 GHz；WiFiManager 會記住上次配網 |
 | 寫死 Wi-Fi | 由 `secrets.h.example` 複製 `secrets.h`；檔案已 gitignore，勿提交 |

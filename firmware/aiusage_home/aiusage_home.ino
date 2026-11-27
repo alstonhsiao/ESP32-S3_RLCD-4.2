@@ -20,7 +20,7 @@
  *   P2-P7    — one 10d remain% chart per source, reset-aware ideal slope
  * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes.
  *   Polls run in a background FreeRTOS task: BOOT stays responsive mid-poll,
- *   screen shows SYNC while fetching and UPD for 3s after new data lands.
+ *   screen shows SYNC while fetching and UPD for 1s after new data lands.
  * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD); queued if a poll runs.
  * Short-press KEY (GPIO18) → jump straight to P2 (Claude 10d chart).
  *
@@ -131,6 +131,7 @@ static const uint32_t TRIGGER_RETRY_MS = 8000; // wait for KM→sync round-trip 
 static const uint32_t RENDER_MS = 60000;     // fallback redraw if NTP not ready
 static const uint32_t AUTO_PAGE_MS = 300000; // auto flip every 5 minutes
 static const uint32_t LONG_PRESS_MS = 3000;
+static const uint32_t UPD_BADGE_MS = 1000;   // UPD badge after manual-flip poll (was 3s)
 static const uint32_t WIFI_CONNECT_MS = 20000;
 
 U8G2_ST7305_300X400_F_4W_HW_SPI u8g2(U8G2_R1, RLCD_CS, RLCD_DC, RLCD_RST);
@@ -160,7 +161,7 @@ static SemaphoreHandle_t gPollMutex = nullptr;  // guards gSnap publish
 static volatile bool gPollBusy = false;          // 1 while poll task runs
 static volatile bool gPollResultReady = false;   // poll task finished; result staged
 static volatile bool gPollResultOk = false;      // staged result is good
-static volatile bool gPollResultShowUpd = false; // show 3s UPD badge after publish
+static volatile bool gPollResultShowUpd = false; // show 1s UPD badge after publish
 static volatile bool gPortalPending = false;    // long-press deferred until poll done
 
 static void render();  // forward
@@ -1910,7 +1911,7 @@ static void render() {
   }
 
   // Badges drawn after page render so they overlay regardless of page:
-  // SYNC while a background poll is fetching; UPD for 3s after new data lands.
+  // SYNC while a background poll is fetching; UPD for 1s after new data lands.
   if (gPollBusy) {
     u8g2.setDrawColor(1);
     u8g2.drawBox(W - 34, 0, 34, 12);
@@ -2021,7 +2022,7 @@ static void pollTaskFn(void* arg) {
 }
 
 // Kick off a background poll. Returns false if one is already running.
-// showUpd: publish-time 3s "UPD" badge (manual-flip deferred poll).
+// showUpd: publish-time 1s "UPD" badge (manual-flip deferred poll).
 static bool startPollAsync(bool showUpd) {
   if (gPollBusy) return false;
   if (!gPollCtx) {
@@ -2071,7 +2072,7 @@ static bool servicePollResult(uint32_t now) {
   }
   if (showUpd && published) {
     gShowUpdateBadge = true;
-    gUpdateBadgeUntil = now + 3000;
+    gUpdateBadgeUntil = now + UPD_BADGE_MS;
   }
   return published;
 }
@@ -2156,7 +2157,7 @@ static void handleButton(uint32_t now) {
   if (gLastBtn == LOW && b == HIGH) {
     uint32_t held = gBtnDownMs ? (now - gBtnDownMs) : 0;
     if (!gLongPressFired && held >= 30 && held < LONG_PRESS_MS) {
-      // manual flip: page immediately; deferred poll after 10s of inactivity
+      // manual flip: page immediately; deferred poll after 5s of inactivity
       gLastManualFlip = now;
       advancePage(now, "BOOT");
     }
@@ -2249,12 +2250,12 @@ void loop() {
   }
 
   // Deferred poll: if user manually flipped and then stayed on the same page
-  // for 10 seconds, fetch cloud data in the background (page keeps flipping).
-  static const uint32_t MANUAL_POLL_DELAY_MS = 10000;
+  // for 5 seconds, fetch cloud data in the background (page keeps flipping).
+  static const uint32_t MANUAL_POLL_DELAY_MS = 5000;  // 2026-11-27: 10s → 5s
   if (gLastManualFlip && !busySetup && !gPollBusy
       && (now - gLastManualFlip >= MANUAL_POLL_DELAY_MS)) {
     gLastManualFlip = 0;  // one-shot
-    Serial.println("deferred poll: 10s idle after manual flip");
+    Serial.println("deferred poll: 5s idle after manual flip");
     startPollAsync(true);
     gLastPoll = now;
   } else if (!gPollBusy && (now - gLastPoll >= POLL_MS)) {
