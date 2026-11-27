@@ -15,14 +15,17 @@
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
- *   P0 Combined — 6 vertical columns: remain% + 5h + day% + reset + week forecast
- *   P1 Trend  — last 10d remain% polylines (6 series, distinct 1bpp styles)
- *   P2-P7    — one 10d remain% chart per source, reset-aware ideal slope
+ *   P0       — Claude 10d remain% chart (boot page; KEY jumps here)
+ *   P1 ALL DETAIL — 6 columns (Claude, Alston, Chihyi, Grok, Ollama, AGY):
+ *                   remain% + 5h + day% + reset + week forecast
+ *   P2-P6    — 10d chart: Alston, Chihyi, Grok, Ollama, AGY (reset-aware ideal slope)
+ *   P7 Trend — last 10d remain% polylines (6 series, distinct 1bpp styles)
+ *   Order lives in PAGE_VIEW / COMBINED_COL_ORDER.
  * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes.
  *   Polls run in a background FreeRTOS task: BOOT stays responsive mid-poll,
  *   screen shows SYNC while fetching and UPD for 1s after new data lands.
  * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD); queued if a poll runs.
- * Short-press KEY (GPIO18) → jump straight to P2 (Claude 10d chart).
+ * Short-press KEY (GPIO18) → jump straight to P0 (Claude 10d chart).
  *
  * Board: ESP32S3 Dev Module | CDC On Boot | Huge APP | Flash 16MB | OPI PSRAM
  * Display: ST7305 SPI SCK=11 MOSI=12 DC=5 CS=40 RST=41  (U8G2_R1 = 400x300)
@@ -61,7 +64,15 @@
 #define H 300
 #define N_SOURCES 6
 #define PAGE_COUNT 8
-#define CHART_PAGE_BASE 2
+// Page → view map (2026-11-27 user order). Values >= 0 are a source index into
+// SRC_KEYS (single-source 10d chart); negatives are the shared views.
+#define VIEW_TREND    (-1)
+#define VIEW_COMBINED (-2)
+// P0 Claude, P1 ALL DETAIL, P2 Alston, P3 Chihyi, P4 Grok, P5 Ollama, P6 AGY, P7 Trend
+static const int8_t PAGE_VIEW[PAGE_COUNT] = {0, VIEW_COMBINED, 2, 1, 3, 4, 5, VIEW_TREND};
+// ALL DETAIL column order (source indices, left → right): Claude, Alston, Chihyi, ...
+static const int8_t COMBINED_COL_ORDER[N_SOURCES] = {0, 2, 1, 3, 4, 5};
+#define KEY_PAGE 0   // KEY short press jumps to the Claude chart
 // P0 pace is the usage-web remaining gap (usage_forecast.h): ±3 ON PACE,
 // ±3..±10 SLOW/FAST, strictly beyond ±10 VERY. P2–P6 keep the slope rings.
 // Trend buffer: 20-min grid over the 10d window (720 slots). The stream
@@ -1738,7 +1749,7 @@ static void renderSourceTrend(int srcIdx) {
 
   char title[24], meta[32], slopeLine[40], actualStr[8], targetStr[8];
   snprintf(title, sizeof(title), "%s REMAIN", gSnap.src[srcIdx].name);
-  snprintf(meta, sizeof(meta), "P%d  LAST 10D", CHART_PAGE_BASE + srcIdx);
+  snprintf(meta, sizeof(meta), "P%d  LAST 10D", gPage);
   if (actual >= 0.0f) snprintf(actualStr, sizeof(actualStr), "%.1f", actual);
   else snprintf(actualStr, sizeof(actualStr), "--");
   if (target >= 0.0f) snprintf(targetStr, sizeof(targetStr), "%.1f", target);
@@ -1835,13 +1846,14 @@ static void renderCombined() {
   }
 
   time_t now = time(nullptr);
-  for (int i = 0; i < N_SOURCES; i++) {
+  for (int col = 0; col < N_SOURCES; col++) {
+    const int i = COMBINED_COL_ORDER[col];
     const SourceUi& s = gSnap.src[i];
-    const int x = 10 + i * 64;
+    const int x = 10 + col * 64;
     const int center = x + 30;
     const int right = x + 58;
     const bool usable = s.present && s.ok && s.remainWeek >= 0.0f && s.remainWeek <= 100.0f;
-    if (i > 0) u8g2.drawVLine(x - 2, 33, 220);
+    if (col > 0) u8g2.drawVLine(x - 2, 33, 220);
 
     u8g2.setFont(u8g2_font_helvB08_tf);  // helvB10 OLLAMA/ALSTON touch the 64px separators
     strCenter(center, 43, s.name);
@@ -1904,9 +1916,10 @@ static void render() {
       gLink == LinkState::WifiSetup ? "AP: AIUsage-RLCD" : "aiusage-web",
       gLink == LinkState::WifiSetup ? "open 192.168.4.1" : DATA_URL);
   } else {
-    if (gPage == 0) renderCombined();
-    else if (gPage == 1) renderTrend();
-    else if (gPage < CHART_PAGE_BASE + N_SOURCES) renderSourceTrend(gPage - CHART_PAGE_BASE);
+    int view = PAGE_VIEW[gPage % PAGE_COUNT];
+    if (view == VIEW_COMBINED) renderCombined();
+    else if (view == VIEW_TREND) renderTrend();
+    else if (view >= 0 && view < N_SOURCES) renderSourceTrend(view);
     else renderCombined();
   }
 
@@ -2167,7 +2180,7 @@ static void handleButton(uint32_t now) {
 
   gLastBtn = b;
 
-  // KEY (GPIO18): short press → jump directly to P2, same deferred-poll
+  // KEY (GPIO18): short press → jump directly to KEY_PAGE (Claude chart), same deferred-poll
   // behaviour as a BOOT flip. No long-press action.
   int k = digitalRead(BTN_KEY);
   if (gLastKey == HIGH && k == LOW) gKeyDownMs = now;
@@ -2175,7 +2188,7 @@ static void handleButton(uint32_t now) {
     uint32_t held = gKeyDownMs ? (now - gKeyDownMs) : 0;
     if (held >= 30) {
       gLastManualFlip = now;
-      showPage(now, CHART_PAGE_BASE, "KEY");
+      showPage(now, KEY_PAGE, "KEY");
     }
     gKeyDownMs = 0;
   }

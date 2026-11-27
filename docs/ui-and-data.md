@@ -29,9 +29,9 @@ Contabo 的 `/data` 公開可用；`/trigger` 需要 Basic Auth，韌體刻意�
 
 | 頁面 | 目的 | 主要輸入／輸出 | 注意事項 |
 | --- | --- | --- | --- |
-| P0 Combined | 一眼比較六個來源的週、5h、每日建議額度與 reset | 六源週剩餘%、bar、5h、day%、reset、節奏、預測、連線與電池狀態 | bar 表示剩餘比例；日額 = 週剩餘% ÷ 剩餘天；D 六欄儀表（每欄 64px），每欄由上往下包含週剩餘、兩行節奏、兩行預測與 5H／D／W，省略 origin 名稱；節奏與網站同用 gap：實際剩餘 − 七天均速理想剩餘，±3pp 內 ON PACE、超過 ±3 至 ±10pp 為 SLOW／FAST，嚴格超過 ±10pp 為 VERY SLOW／VERY FAST |
-| P1 Trend | 看近期週剩餘趨勢 | 有限歷史點、六種 1bpp 線型（AGY 為細點線）、輔助線 | 多線重疊時優先可讀性，並以 P2–P7 單源頁補足 |
-| P2–P7 Source Trend | 分別看 Claude／Chihyi／Alston／Grok／Ollama／AGY 最近 10 天週剩餘 | 單一來源剩餘曲線、reset、due/reset 理想線、斜率摘要 | 實際資料限制最近 10 天；提前 reset 時理想線在事件點截斷，reset 後重新由 100% 開始；節奏以實測斜率對比理想斜率：內圈 ±10% 相對容差，超過 ±20% 為 VERY FAST／VERY SLOW；斜率窗不足 6 小時顯示 `RESET`／`--` |
+| P1 ALL DETAIL（原 P0 Combined） | 一眼比較六個來源的週、5h、每日建議額度與 reset | 六源週剩餘%、bar、5h、day%、reset、節奏、預測、連線與電池狀態 | bar 表示剩餘比例；日額 = 週剩餘% ÷ 剩餘天；D 六欄儀表（每欄 64px），每欄由上往下包含週剩餘、兩行節奏、兩行預測與 5H／D／W，省略 origin 名稱；節奏與網站同用 gap：實際剩餘 − 七天均速理想剩餘，±3pp 內 ON PACE、超過 ±3 至 ±10pp 為 SLOW／FAST，嚴格超過 ±10pp 為 VERY SLOW／VERY FAST |
+| P7 Trend（原 P1） | 看近期週剩餘趨勢 | 有限歷史點、六種 1bpp 線型（AGY 為細點線）、輔助線 | 多線重疊時優先可讀性，並以 P2–P7 單源頁補足 |
+| P0、P2–P6 Source Trend | 分別看 Claude（P0）／Alston（P2）／Chihyi（P3）／Grok（P4）／Ollama（P5）／AGY（P6）最近 10 天週剩餘 | 單一來源剩餘曲線、reset、due/reset 理想線、斜率摘要 | 實際資料限制最近 10 天；提前 reset 時理想線在事件點截斷，reset 後重新由 100% 開始；節奏以實測斜率對比理想斜率：內圈 ±10% 相對容差，超過 ±20% 為 VERY FAST／VERY SLOW；斜率窗不足 6 小時顯示 `RESET`／`--` |
 | Error／Partial | 讓失敗狀態仍可讀 | 無資料、部分來源、重試與連線狀態 | 不得以白屏掩蓋 HTTP、Wi-Fi 或資料問題 |
 
 ## Wireframe 與參考實作

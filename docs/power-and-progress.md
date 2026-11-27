@@ -143,3 +143,10 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 - **審核抓到的坑（首燒三次全失敗 `gzip trunc`）**：資料已完整解出 710,480 bytes，但 ROM 內建的舊版 miniz `tinfl` 在 DONE 前把 trailer 位元組吞進 bit buffer 且不退還，導致讀不到 8-byte trailer。修法：`GzipInput` 保留 body 最後 8 bytes 的滾動副本，DONE 後排空剩餘輸入再用該副本驗證。**反例：用 ROM tinfl 解 gzip 時不可假設 DONE 後輸入緩衝仍留有完整 trailer。**
 - **實測（連續 3 次重開機）**：comp 26,457 → uncomp 710,480 bytes，CRC／ISIZE 通過；body 581／588／744 ms（scan 約 365 ms、inflate 約 29 ms、網路等待 180–360 ms）；TLS+GET 約 0.94–1.03 秒；**poll 總計 1.5–1.7 秒**（identity 時 9–15 秒）。Wi-Fi 開啟時間再大幅縮短，每次輪詢耗電下降；輪詢頻率、刷新、翻頁、trigger/retry 流程不變。identity 退回路徑與 chunked 路徑僅經審閱與編譯，未在實機觸發。`measure:` log 仍保留。未 commit／push。
 - **互動節奏微調（同日）**：冷連線實測（手動翻頁觸發）：Wi-Fi 連線 1.2 秒（RSSI −47）＋ TLS 1.15 秒＋ body 0.56 秒，poll 總計 2.9 秒；使用者體感「約 6 秒」主要是 SYNC 後接 3 秒 `UPD` 徽章。`UPD` 改 1 秒（`UPD_BADGE_MS`），手動翻頁後延遲輪詢 `MANUAL_POLL_DELAY_MS` 10→5 秒。連續翻頁仍只在最後一次按鍵後觸發一次；5 秒窗較短，快速瀏覽時多觸發輪詢的機率略增，但每次輪詢已降到約 3 秒，耗電影響小。15 分鐘排程輪詢不變。實機燒錄後開機輪詢正常。
+
+### 2026-11-27：頁序與 ALL DETAIL 欄序調整
+
+- 使用者指定新頁序：P0 Claude、P1 Trend、P2 Alston、P3 Chihyi、P4 Grok、P5 Ollama、P6 AGY、P7 ALL DETAIL；ALL DETAIL 欄序改為 Claude／Alston／Chihyi／Grok／Ollama／AGY。開機第一頁因此是 Claude 圖；KEY 改跳 P0（Claude，跟內容走）。
+- 實作：新增 `PAGE_VIEW[]`（頁碼 → 畫面）與 `COMBINED_COL_ORDER[]`（欄位 → 來源索引），`SRC_KEYS` 來源索引不動，所以 P1 趨勢線型、Serial `P0 ...` 預測 log 順序（仍以來源索引）不變；單源圖頁碼標示改用 `gPage`。去掉 `CHART_PAGE_BASE`。
+- 同日再調整：P1 與 P7 對調，最終頁序為 P0 Claude、P1 ALL DETAIL、P2 Alston、P3 Chihyi、P4 Grok、P5 Ollama、P6 AGY、P7 Trend（`PAGE_VIEW = {0, COMBINED, 2, 1, 3, 4, 5, TREND}`）。
+- R1 400×300、1bpp、刷新與輪詢策略不變；實機燒錄後開機輪詢正常。`ui/aiusage-wireframe.html` 尚未同步新頁序（NEED_REVIEW）。

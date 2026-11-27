@@ -43,7 +43,7 @@ Hello smoke test 的目標路徑是 `firmware/hello_rlcd`；主儀表的目標�
 
 | 操作 | 行為 |
 | --- | --- |
-| 短按 BOOT | P0 Combined → P1 Trend → P2–P6 五個來源圖表循環；停止操作約 5 秒後拉取新資料 |
+| 短按 BOOT | P0 Claude → P1 ALL DETAIL → P2 Alston → P3 Chihyi → P4 Grok → P5 Ollama → P6 AGY → P7 Trend 循環；短按 KEY 直跳 P0；停止操作約 5 秒後拉取新資料 |
 | 長按 BOOT 約 3 秒 | 顯示 AP 資訊，手機連 `AIUsage-RLCD`，開 `192.168.4.1` 配網 |
 | Wi-Fi | 只支援 2.4 GHz；WiFiManager 會記住上次配網 |
 | 寫死 Wi-Fi | 由 `secrets.h.example` 複製 `secrets.h`；檔案已 gitignore，勿提交 |
