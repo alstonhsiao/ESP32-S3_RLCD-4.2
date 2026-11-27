@@ -7,7 +7,7 @@
 
 | 檔案 | 說明 |
 | --- | --- |
-| [aiusage-wireframe.html](./aiusage-wireframe.html) | 現行 P0–P6 與 Error／Partial 狀態的 AI 週剩餘 wireframe |
+| [aiusage-wireframe.html](./aiusage-wireframe.html) | 現行 P0–P7（2026-11-27 頁序）與 Error／Partial 狀態的 AI 週剩餘 wireframe |
 | [all-detail-layout-options.html](./all-detail-layout-options.html) | ALL DETAIL 五種排版比較：D 五欄儀表已選用，其餘保留作比較 |
 | [all-detail-d.svg](./all-detail-d.svg)、[all-detail-d-partial.svg](./all-detail-d-partial.svg) | 現行 D 方案上方 258px 的 U8g2 字型輸出（正常／部分失敗），由主 wireframe 載入 |
 | [../web/aiusage-analysis.html](../web/aiusage-analysis.html) | 電腦端四源分析圖表（仍用舊 `codex` key，尚未同步韌體五源）；P2–P6 的 reset/due 與斜率原型 |
@@ -41,9 +41,10 @@ open ui/all-detail-layout-options.html
 
 | 頁 | 內容 |
 | --- | --- |
-| P0 Combined | 週剩餘 + bar、5h、建議一天額度、reset、gap 五級節奏、提前用完／到期剩餘與 USD 估值的 D 方案五欄儀表 |
-| P1 Trend | 多源剩餘折線（五種線型區分）+ 100/7 輔助虛線 |
-| P2–P6 Source Trend | Claude、Chihyi、Alston、Grok、Ollama 各自一頁；最近 10 天剩餘曲線、reset/due 標記與提前 reset 截斷的理想斜率（電腦端原型見 `../web/aiusage-analysis.html`） |
+| P0 Claude | Claude 單源最近 10 天圖（開機第一頁；KEY 直跳） |
+| P1 All Detail | 週剩餘 + bar、5h、建議一天額度、reset、gap 五級節奏、提前用完／到期剩餘與 USD 估值的 D 方案六欄儀表（欄序 Claude／Alston／Chihyi／Grok／Ollama／AGY） |
+| P2–P6 Source Trend | Alston、Chihyi、Grok、Ollama、AGY 各自一頁；最近 10 天剩餘曲線、reset/due 標記與提前 reset 截斷的理想斜率（電腦端原型見 `../web/aiusage-analysis.html`） |
+| P7 Trend | 多源剩餘折線（六種線型區分）+ 100/7 輔助虛線 |
 | States | no data / partial / offline |
 
 BOOT 短按翻頁已在韌體實作；停止操作約 10 秒後會拉取新資料。

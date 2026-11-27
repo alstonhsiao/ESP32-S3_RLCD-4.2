@@ -36,8 +36,8 @@ Contabo 的 `/data` 公開可用；`/trigger` 需要 Basic Auth，韌體刻意�
 
 ## Wireframe 與參考實作
 
-- 人類預覽入口：`../ui/README.md`；HTML wireframe：`../ui/aiusage-wireframe.html`。該 wireframe 已對齊現行 P0 Combined／P1 Trend／P2–P6，並保留 Error／Partial 狀態供失敗路徑驗收。
-- `../ui/` 的版面應與 `../firmware/aiusage_home/aiusage_home.ino` 的 P0–P6 對照，不要只改其中一邊。
+- 人類預覽入口：`../ui/README.md`；HTML wireframe：`../ui/aiusage-wireframe.html`。該 wireframe 已對齊 2026-11-27 頁序（P0 Claude、P1 All Detail、P2–P6 Alston／Chihyi／Grok／Ollama／AGY、P7 Trend），並保留 Error／Partial 狀態供失敗路徑驗收。
+- `../ui/` 的版面應與 `../firmware/aiusage_home/aiusage_home.ino` 的 `PAGE_VIEW`／`COMBINED_COL_ORDER` 與 P0–P7 對照，不要只改其中一邊。
 - ClaudeSlate 是同一塊硬體的參考專案，可借鏡 400×300 單色資訊設計、進度條、折線、BOOT 翻頁、captive portal、離線狀態與軟體反顯；需求不符時以本 repo 規則為準。
 
 ## 刷新與功耗邊界
