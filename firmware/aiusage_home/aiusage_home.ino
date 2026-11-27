@@ -1,7 +1,7 @@
 /*
  * aiusage_home — AI week-remain dashboard on Waveshare ESP32-S3-RLCD-4.2
  *
- * Data: GET https://aiusage.apps.qianyinexus.com/data
+ * Data: GET https://aiusage.apps.qianyinexus.com/data?days=11 (last 11d only)
  *   Cloud SQLite (persistent volume) fed by local usage-history.db via upsert.
  *   If /data returns 0 points, firmware attempts POST /trigger, then re-fetches.
  *   Contabo /trigger requires Basic Auth; no credentials are sent (expected 401).
@@ -9,14 +9,20 @@
  *   outgrown internal RAM (686 KB by 2026-08-30), which crashed the WiFi PHY
  *   timer alloc with ESP_ERR_NO_MEM. Only the last point + the 10d trend grid
  *   are kept.
+ *   Requests Accept-Encoding: gzip (~26 KB on wire vs ~710 KB raw) and streams
+ *   through ESP32-S3 ROM miniz tinfl (32 KB PSRAM ring dict) into scanFeed(),
+ *   falling back to identity if the server responds uncompressed.
  * remain% = 100 - used_weekly_pct  (same as aiusage-web / Telegram)
  *
  * Pages (auto every 5m; short-press BOOT advances + resets timer):
  *   P0 Combined — 6 vertical columns: remain% + 5h + day% + reset + week forecast
  *   P1 Trend  — last 10d remain% polylines (6 series, distinct 1bpp styles)
  *   P2-P7    — one 10d remain% chart per source, reset-aware ideal slope
- * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes
- * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD)
+ * Power: poll cloud every 15m then WiFi OFF; redraw only when minute changes.
+ *   Polls run in a background FreeRTOS task: BOOT stays responsive mid-poll,
+ *   screen shows SYNC while fetching and UPD for 3s after new data lands.
+ * Long-press BOOT 3s → WiFi setup portal (AIUsage-RLCD); queued if a poll runs.
+ * Short-press KEY (GPIO18) → jump straight to P2 (Claude 10d chart).
  *
  * Board: ESP32S3 Dev Module | CDC On Boot | Huge APP | Flash 16MB | OPI PSRAM
  * Display: ST7305 SPI SCK=11 MOSI=12 DC=5 CS=40 RST=41  (U8G2_R1 = 400x300)
@@ -30,6 +36,8 @@
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
+#include <esp_heap_caps.h>
+#include "miniz.h"
 #include <WiFiManager.h>
 
 #if __has_include("secrets.h")
@@ -47,6 +55,7 @@
 #define RLCD_RST  41
 #define BAT_ADC_PIN 4
 #define BTN_BOOT  0
+#define BTN_KEY   18   // KEY: active-low, short press jumps straight to P2
 
 #define W 400
 #define H 300
@@ -68,22 +77,7 @@
 // Reset markers are sparse (a handful per week); no need to scale with TREND_N.
 #define TREND_EVENT_MAX 32
 
-#include "usage_scan.h"
-#include "usage_forecast.h"
-
-// Data source: cloud SQLite (persistent storage on Contabo), fed by local SQLite upsert.
-// GET /data reads from cloud DB; POST /trigger requests a quota query + sync.
-static const char* DATA_URL = "https://aiusage.apps.qianyinexus.com/data";
-static const char* TRIGGER_URL = "https://aiusage.apps.qianyinexus.com/trigger";
-static const uint32_t POLL_MS = 900000;      // fetch cloud data every 15 minutes
-static const uint32_t TRIGGER_RETRY_MS = 8000; // wait for KM→sync round-trip before re-fetch
-static const uint32_t RENDER_MS = 60000;     // fallback redraw if NTP not ready
-static const uint32_t AUTO_PAGE_MS = 300000; // auto flip every 5 minutes
-static const uint32_t LONG_PRESS_MS = 3000;
-static const uint32_t WIFI_CONNECT_MS = 20000;
-
-U8G2_ST7305_300X400_F_4W_HW_SPI u8g2(U8G2_R1, RLCD_CS, RLCD_DC, RLCD_RST);
-
+// Data link state for the bottom bar (label set in linkLabel()).
 enum class LinkState : uint8_t {
   Booting, WifiSetup, Connecting, Online, Offline, HttpError, ParseError, Empty
 };
@@ -121,6 +115,26 @@ struct UsageSnapshot {
   long observedEpoch = 0;  // ts_epoch of the latest scanned point; 0 if none
 };
 
+#include "usage_scan.h"
+#include "usage_forecast.h"
+
+// Data source: cloud SQLite (persistent storage on Contabo), fed by local SQLite upsert.
+// GET /data reads from cloud DB; POST /trigger requests a quota query + sync.
+// ?days=11: server returns only points within (newest ts_epoch - 11d), ~0.7 MB
+// instead of the full ~5.5 MB history. 1 day margin over TREND_WINDOW_SEC; the
+// local 10d cutoff in scanFinish() stays as a second guard. Invalid values are
+// silently ignored server-side (full history) — see the >2 MB warning below.
+static const char* DATA_URL = "https://aiusage.apps.qianyinexus.com/data?days=11";
+static const char* TRIGGER_URL = "https://aiusage.apps.qianyinexus.com/trigger";
+static const uint32_t POLL_MS = 900000;      // fetch cloud data every 15 minutes
+static const uint32_t TRIGGER_RETRY_MS = 8000; // wait for KM→sync round-trip before re-fetch
+static const uint32_t RENDER_MS = 60000;     // fallback redraw if NTP not ready
+static const uint32_t AUTO_PAGE_MS = 300000; // auto flip every 5 minutes
+static const uint32_t LONG_PRESS_MS = 3000;
+static const uint32_t WIFI_CONNECT_MS = 20000;
+
+U8G2_ST7305_300X400_F_4W_HW_SPI u8g2(U8G2_R1, RLCD_CS, RLCD_DC, RLCD_RST);
+
 static UsageSnapshot gSnap;
 static LinkState gLink = LinkState::Booting;
 static int gPage = 0;
@@ -130,6 +144,8 @@ static uint32_t gLastRender = 0;
 static uint32_t gLastPageChange = 0;  // auto-page timer (reset on BOOT short-press)
 static char gLastErr[48] = "";
 static int gLastBtn = HIGH;
+static int gLastKey = HIGH;
+static uint32_t gKeyDownMs = 0;
 static uint32_t gBtnDownMs = 0;
 static bool gLongPressFired = false;
 static int gLastDrawnMinuteKey = -1;  // hour*60+min; skip full redraw if unchanged
@@ -137,11 +153,25 @@ static bool gShowUpdateBadge = false;      // true → draw "↻" badge after re
 static uint32_t gUpdateBadgeUntil = 0;     // millis() when badge expires
 static uint32_t gLastManualFlip = 0;       // millis() of last BOOT short-press; 0 = none pending
 
+// Background poll state (task functions live further down, near pollData).
+// gSnap is written only by the loop thread under gPollMutex when publishing
+// a finished poll; the poll task accumulates into gPollCtx->snap instead.
+static SemaphoreHandle_t gPollMutex = nullptr;  // guards gSnap publish
+static volatile bool gPollBusy = false;          // 1 while poll task runs
+static volatile bool gPollResultReady = false;   // poll task finished; result staged
+static volatile bool gPollResultOk = false;      // staged result is good
+static volatile bool gPollResultShowUpd = false; // show 3s UPD badge after publish
+static volatile bool gPortalPending = false;    // long-press deferred until poll done
+
 static void render();  // forward
 static void drawUpdateBadge();
 static bool haveLocalTime(struct tm* t);
 static bool ensureWifi(uint32_t timeoutMs = WIFI_CONNECT_MS);
 static void radioOff();
+static void startWifiPortal();             // defined near the poll task
+static bool startPollAsync(bool showUpd);  // background poll kickoff
+static bool pollData(ScanCtx& ctx);        // runs on the poll task
+void scanCtxReset(ScanCtx& ctx);           // usage_scan.h contract
 
 struct TrendResetEvent {
   long time;
@@ -166,6 +196,15 @@ static bool minuteChanged() {
   if (key == gLastDrawnMinuteKey) return false;
   gLastDrawnMinuteKey = key;
   return true;
+}
+
+static void showPage(uint32_t now, int page, const char* reason) {
+  gPage = page % PAGE_COUNT;
+  gLastPageChange = now;
+  gLastRender = now;
+  Serial.printf("page → P%d (%s)\n", gPage, reason);
+  render();
+  noteDrawnMinute();
 }
 
 static void advancePage(uint32_t now, const char* reason) {
@@ -373,22 +412,13 @@ static const char* linkLabel(LinkState s) {
 // identical to the previous full-JSON parse.
 static const char* SRC_KEYS[N_SOURCES] = {"claude", "codex:chihyi", "codex:Alston", "grok", "ollama", "agy"};
 
-static TrendSlot gScanRing[TREND_N];
-static int gScanRingHead = 0;
-static int gScanRingN = 0;
-
-static void scanRingClear() {
-  gScanRingHead = 0;
-  gScanRingN = 0;
-}
-
-static void scanRingPush(const TrendSlot& s) {
-  if (gScanRingN < TREND_N) {
-    gScanRing[(gScanRingHead + gScanRingN) % TREND_N] = s;
-    gScanRingN++;
+static void scanRingPush(ScanCtx& ctx, const TrendSlot& s) {
+  if (ctx.ringN < TREND_N) {
+    ctx.ring[(ctx.ringHead + ctx.ringN) % TREND_N] = s;
+    ctx.ringN++;
   } else {
-    gScanRing[gScanRingHead] = s;
-    gScanRingHead = (gScanRingHead + 1) % TREND_N;
+    ctx.ring[ctx.ringHead] = s;
+    ctx.ringHead = (ctx.ringHead + 1) % TREND_N;
   }
 }
 
@@ -398,7 +428,7 @@ static bool sourceScanOk(const ScanPoint& p, int i) {
   return p.hasWeekly[i] || p.has5h[i];
 }
 
-static void scanPushSlot(const ScanPoint& p) {
+static void scanPushSlot(ScanCtx& ctx, const ScanPoint& p) {
   if (!p.hasEpoch || p.epoch <= 100000) return;
   TrendSlot s;
   s.epoch = p.epoch;
@@ -412,10 +442,11 @@ static void scanPushSlot(const ScanPoint& p) {
     s.remain[i] = (int8_t)(remainFromUsed(p.weekly[i]) + 0.5f);
     s.resetWeek[i] = p.resetWeek[i];
   }
-  scanRingPush(s);
+  scanRingPush(ctx, s);
 }
 
-static void scanApplyPoint(ScanState& st) {
+static void scanApplyPoint(ScanCtx& ctx) {
+  ScanState& st = ctx.st;
   st.last = st.pt;
   st.pointCount++;
   if (!st.pt.hasEpoch || st.pt.epoch <= 100000) return;
@@ -424,20 +455,21 @@ static void scanApplyPoint(ScanState& st) {
     st.slotPt = st.pt;
     return;
   }
-  if (st.slotHas) scanPushSlot(st.slotPt);
+  if (st.slotHas) scanPushSlot(ctx, st.slotPt);
   st.slotHas = true;
   st.slotNo = slot;
   st.slotPt = st.pt;
 }
 
-static void scanApplyStringValue(ScanState& st, const char* s) {
+static void scanApplyStringValue(ScanCtx& ctx, const char* s) {
+  ScanState& st = ctx.st;
   if (st.inPoint && st.depth == st.pointDepth && !strcmp(st.valueKey, "ts")) {
     strncpy(st.pt.iso, s, sizeof(st.pt.iso) - 1);
     st.pt.iso[sizeof(st.pt.iso) - 1] = 0;
-  } else if (st.depth == 1 && !st.seenIngest
+  } else if (st.depth == 1 && !ctx.seenIngest
              && (!strcmp(st.valueKey, "last_ingest_at") || !strcmp(st.valueKey, "exported_at"))) {
-    shortIngest(s, gSnap.ingestShort, sizeof(gSnap.ingestShort));
-    st.seenIngest = true;
+    shortIngest(s, ctx.ingestShort, sizeof(ctx.ingestShort));
+    ctx.seenIngest = true;
   } else if (st.sourcesDepth >= 0 && st.depth == st.sourcesDepth + 1 && st.srcIdx >= 0) {
     if (!strcmp(st.valueKey, "origin")) {
       shortOrigin(s, st.pt.origin[st.srcIdx], sizeof(st.pt.origin[0]));
@@ -488,7 +520,8 @@ static void scanOnColon(ScanState& st) {
   }
 }
 
-static void scanFeed(ScanState& st, char c) {
+static void scanFeed(ScanCtx& ctx, char c) {
+  ScanState& st = ctx.st;
   switch (st.mode) {
     case 0: {
       if (c == ' ' || c == '\t' || c == '\n' || c == '\r') return;
@@ -513,7 +546,7 @@ static void scanFeed(ScanState& st, char c) {
       }
       if (c == '}') {
         if (st.inPoint && st.depth == st.pointDepth) {
-          scanApplyPoint(st);
+          scanApplyPoint(ctx);
           st.inPoint = false;
           st.pointDepth = -1;
         } else if (st.sourcesDepth >= 0 && st.depth == st.sourcesDepth) {
@@ -573,7 +606,7 @@ static void scanFeed(ScanState& st, char c) {
           strncpy(st.pendingKey, st.buf, sizeof(st.pendingKey) - 1);
           st.pendingKey[sizeof(st.pendingKey) - 1] = 0;
         } else {
-          scanApplyStringValue(st, st.buf);
+          scanApplyStringValue(ctx, st.buf);
         }
         return;
       }
@@ -606,7 +639,7 @@ static void scanFeed(ScanState& st, char c) {
         st.mode = 0;
         st.buf[st.bufLen] = 0;
         scanApplyNumber(st, strtod(st.buf, nullptr));
-        scanFeed(st, c);
+        scanFeed(ctx, c);
         return;
       }
       if (st.bufLen < sizeof(st.buf) - 1) st.buf[st.bufLen++] = c;
@@ -617,7 +650,7 @@ static void scanFeed(ScanState& st, char c) {
         st.mode = 0;
         st.buf[st.bufLen] = 0;
         scanApplyLiteral(st, st.buf);
-        scanFeed(st, c);
+        scanFeed(ctx, c);
         return;
       }
       if (st.bufLen < sizeof(st.buf) - 1) st.buf[st.bufLen++] = c;
@@ -626,33 +659,72 @@ static void scanFeed(ScanState& st, char c) {
   }
 }
 
-static void scanFinish(ScanState& st) {
-  if (st.slotHas) scanPushSlot(st.slotPt);
-  gSnap.pointCount = (int)st.pointCount;
+// Reset the scan workspace for a fresh /data fetch. The staging snapshot is
+// re-constructed (placement-new) because the workspace lives in ps_malloc'd
+// memory: without this the src[i].name pointers stay garbage from raw PSRAM
+// and publishing copies them into gSnap, crashing every %s print / drawStr
+// (LoadProhibited in _svfprintf_r). The trend arrays have no member
+// initializers, so they are cleared explicitly here.
+void scanCtxReset(ScanCtx& ctx) {
+  ctx.st = ScanState();
+  ctx.ringHead = 0;
+  ctx.ringN = 0;
+  ctx.seenIngest = false;
+  ctx.ingestShort[0] = 0;
+  new (&ctx.snap) UsageSnapshot();  // re-run member initializers (name ptrs → literals)
+  UsageSnapshot& s = ctx.snap;
+  s.valid = false;
+  s.pointCount = 0;
+  s.trendN = 0;
+  s.observedEpoch = 0;
+  s.ingestShort[0] = 0;
+  for (int i = 0; i < N_SOURCES; i++) {
+    s.src[i].ok = false;
+    s.src[i].present = false;
+    s.src[i].remainWeek = -1;
+    s.src[i].remain5h = -1;
+    s.src[i].resetWeek = 0;
+    s.src[i].reset5h = 0;
+    s.src[i].origin[0] = 0;
+    for (int j = 0; j < TREND_N; j++) {
+      s.trend[i][j] = -1;
+      s.trendResetWeek[i][j] = 0;
+    }
+  }
+  for (int j = 0; j < TREND_N; j++) s.trendTs[j] = 0;
+  s.trendStartLbl[0] = 0;
+  s.trendEndLbl[0] = 0;
+}
+
+static void scanFinish(ScanCtx& ctx) {
+  ScanState& st = ctx.st;
+  UsageSnapshot& snap = ctx.snap;
+  if (st.slotHas) scanPushSlot(ctx, st.slotPt);
+  snap.pointCount = (int)st.pointCount;
   long lastEp = st.last.epoch;
   long cutoff = (lastEp > 100000) ? lastEp - TREND_WINDOW_SEC : 0;
   int ti = 0;
-  for (int i = 0; i < gScanRingN && ti < TREND_N; i++) {
-    const TrendSlot& s = gScanRing[(gScanRingHead + i) % TREND_N];
+  for (int i = 0; i < ctx.ringN && ti < TREND_N; i++) {
+    const TrendSlot& s = ctx.ring[(ctx.ringHead + i) % TREND_N];
     if (s.epoch < cutoff) continue;
-    gSnap.trendTs[ti] = s.epoch;
+    snap.trendTs[ti] = s.epoch;
     if (ti == 0) {
-      if (s.md[0]) snprintf(gSnap.trendStartLbl, sizeof(gSnap.trendStartLbl), "%s", s.md);
-      else labelFromIsoOrEpoch("", s.epoch, gSnap.trendStartLbl, sizeof(gSnap.trendStartLbl));
+      if (s.md[0]) snprintf(snap.trendStartLbl, sizeof(snap.trendStartLbl), "%s", s.md);
+      else labelFromIsoOrEpoch("", s.epoch, snap.trendStartLbl, sizeof(snap.trendStartLbl));
     }
-    if (s.md[0]) snprintf(gSnap.trendEndLbl, sizeof(gSnap.trendEndLbl), "%s", s.md);
-    else labelFromIsoOrEpoch("", s.epoch, gSnap.trendEndLbl, sizeof(gSnap.trendEndLbl));
+    if (s.md[0]) snprintf(snap.trendEndLbl, sizeof(snap.trendEndLbl), "%s", s.md);
+    else labelFromIsoOrEpoch("", s.epoch, snap.trendEndLbl, sizeof(snap.trendEndLbl));
     for (int k = 0; k < N_SOURCES; k++) {
-      gSnap.trend[k][ti] = s.remain[k];
-      gSnap.trendResetWeek[k][ti] = s.resetWeek[k];
+      snap.trend[k][ti] = s.remain[k];
+      snap.trendResetWeek[k][ti] = s.resetWeek[k];
     }
     ti++;
   }
-  gSnap.trendN = ti;
+  snap.trendN = ti;
 
   for (int i = 0; i < N_SOURCES; i++) {
     if (!st.last.present[i]) continue;
-    SourceUi& dst = gSnap.src[i];
+    SourceUi& dst = snap.src[i];
     dst.present = true;
     dst.ok = sourceScanOk(st.last, i);
     strncpy(dst.origin, st.last.origin[i], sizeof(dst.origin) - 1);
@@ -662,73 +734,467 @@ static void scanFinish(ScanState& st) {
     dst.resetWeek = st.last.resetWeek[i];
     dst.reset5h = st.last.reset5h[i];
   }
-  gSnap.observedEpoch =
+  snap.observedEpoch =
       (st.pointCount > 0 && st.last.hasEpoch && st.last.epoch > 100000) ? st.last.epoch : 0;
-  gSnap.valid = (st.pointCount > 0);
+  snap.valid = (st.pointCount > 0);
+  if (ctx.seenIngest)
+    snprintf(snap.ingestShort, sizeof(snap.ingestShort), "%s", ctx.ingestShort);
 }
 
-static void snapReset() {
-  gSnap.valid = false;
-  gSnap.pointCount = 0;
-  gSnap.trendN = 0;
-  gSnap.observedEpoch = 0;
-  gSnap.ingestShort[0] = 0;
-  for (int i = 0; i < N_SOURCES; i++) {
-    gSnap.src[i].ok = false;
-    gSnap.src[i].present = false;
-    gSnap.src[i].remainWeek = -1;
-    gSnap.src[i].remain5h = -1;
-    gSnap.src[i].resetWeek = 0;
-    gSnap.src[i].reset5h = 0;
-    gSnap.src[i].origin[0] = 0;
-    for (int j = 0; j < TREND_N; j++) {
-      gSnap.trend[i][j] = -1;
-      gSnap.trendResetWeek[i][j] = 0;
+// Stream reader over NetworkClient that handles Content-Length, EOF-terminated,
+// and HTTP/1.1 Transfer-Encoding: chunked bodies, with 15s stall detection and
+// read timing stats. Small enough for the 8 KB poll-task stack.
+struct HttpBodyReader {
+  NetworkClient& stream;
+  int contentLen;
+  bool chunked;
+  size_t wireBytes = 0;
+  size_t chunkLeft = 0;
+  bool chunkFirst = true;
+  bool eof = false;
+  bool stalled = false;
+  bool err = false;
+  uint32_t lastData = 0;
+  uint32_t readUs = 0;
+  uint32_t nReads = 0;
+  static const uint32_t STALL_MS = 15000;
+
+  HttpBodyReader(NetworkClient& s, int len, bool isChunked)
+      : stream(s), contentLen(len), chunked(isChunked), lastData(millis()) {}
+
+  // Read up to maxLen raw bytes from the underlying stream.
+  // Returns >0 bytes read, 0 on EOF, -1 on stall.
+  int readRaw(uint8_t* dst, size_t maxLen) {
+    while (true) {
+      int avail = stream.available();
+      if (avail <= 0) {
+        if (!stream.connected()) return 0;
+        if (millis() - lastData > STALL_MS) { stalled = true; return -1; }
+        delay(2);
+        continue;
+      }
+      size_t want = maxLen;
+      if ((size_t)avail < want) want = (size_t)avail;
+      uint32_t r0 = micros();
+      int rd = stream.readBytes((char*)dst, want);
+      readUs += micros() - r0;
+      nReads++;
+      if (rd <= 0) {
+        if (!stream.connected()) return 0;
+        if (millis() - lastData > STALL_MS) { stalled = true; return -1; }
+        continue;
+      }
+      lastData = millis();
+      return rd;
     }
   }
-  for (int j = 0; j < TREND_N; j++) gSnap.trendTs[j] = 0;
-  gSnap.trendStartLbl[0] = 0;
-  gSnap.trendEndLbl[0] = 0;
-}
 
-static bool parseStream(NetworkClient& stream, int contentLen) {
-  snapReset();
-  scanRingClear();
-  static ScanState st;
-  st = ScanState();
+  // Read one raw byte (used only for chunked framing lines).
+  int readRawByte(uint8_t& out) {
+    return readRaw(&out, 1);
+  }
 
-  uint8_t chunk[512];
-  size_t total = 0;
-  uint32_t lastData = millis();
-  const uint32_t stallMs = 15000;
-  while (contentLen < 0 || (int)total < contentLen) {
-    int avail = stream.available();
-    if (avail <= 0) {
-      if (!stream.connected()) break;
-      if (millis() - lastData > stallMs) break;
-      delay(2);
-      continue;
+  // Advance to the next HTTP chunk header. Returns 1 if chunkLeft > 0,
+  // 0 on terminating 0-length chunk, -1 on stall or malformed framing.
+  int nextChunk() {
+    uint8_t b = 0;
+    if (!chunkFirst) {
+      // Consume trailing CRLF after the previous chunk payload.
+      for (int i = 0; i < 2; i++) {
+        int r = readRawByte(b);
+        if (r <= 0) { err = true; return -1; }
+        if (b == '\n') break;
+      }
     }
-    size_t want = sizeof(chunk);
-    if ((size_t)avail < want) want = (size_t)avail;
+    chunkFirst = false;
+
+    char line[24];
+    size_t len = 0;
+    while (true) {
+      int r = readRawByte(b);
+      if (r <= 0) { err = true; return -1; }
+      if (b == '\n') break;
+      if (b == '\r') continue;
+      if (len < sizeof(line) - 1) line[len++] = (char)b;
+    }
+    line[len] = 0;
+    // Strip optional chunk extensions (";...").
+    char* semi = strchr(line, ';');
+    if (semi) *semi = 0;
+    if (line[0] == 0) { err = true; return -1; }
+    char* endp = nullptr;
+    unsigned long sz = strtoul(line, &endp, 16);
+    if (endp == line) { err = true; return -1; }
+    if (sz == 0) {
+      eof = true;
+      return 0;
+    }
+    chunkLeft = (size_t)sz;
+    return 1;
+  }
+
+  // Read decoded HTTP body bytes into dst.
+  // Returns >0 bytes read, 0 on EOF, -1 on stall or framing error.
+  int read(uint8_t* dst, size_t maxLen) {
+    if (eof || maxLen == 0) return 0;
+    if (chunked) {
+      if (chunkLeft == 0) {
+        int nc = nextChunk();
+        if (nc <= 0) return nc;
+      }
+      size_t want = maxLen < chunkLeft ? maxLen : chunkLeft;
+      int rd = readRaw(dst, want);
+      if (rd < 0) return -1;
+      if (rd == 0) { err = true; eof = true; return -1; }
+      chunkLeft -= (size_t)rd;
+      wireBytes += (size_t)rd;
+      return rd;
+    }
+
+    if (contentLen >= 0 && wireBytes >= (size_t)contentLen) {
+      eof = true;
+      return 0;
+    }
+    size_t want = maxLen;
     if (contentLen >= 0) {
-      size_t left = (size_t)contentLen - total;
+      size_t left = (size_t)contentLen - wireBytes;
       if (left < want) want = left;
     }
-    int rd = stream.readBytes((char*)chunk, want);
-    if (rd <= 0) {
-      if (!stream.connected()) break;
-      if (millis() - lastData > stallMs) break;
-      continue;
+    int rd = readRaw(dst, want);
+    if (rd < 0) return -1;
+    if (rd == 0) { eof = true; return 0; }
+    wireBytes += (size_t)rd;
+    if (contentLen >= 0 && wireBytes >= (size_t)contentLen) eof = true;
+    return rd;
+  }
+};
+
+static void logStreamSummary(const ScanCtx& ctx, const char* encoding,
+                             size_t compBytes, size_t uncompBytes,
+                             uint32_t wallMs, uint32_t scanUs,
+                             uint32_t inflateUs, uint32_t readUs,
+                             uint32_t nReads) {
+  Serial.printf("poll: stream scanned %u bytes, pts=%d trend=%d\n",
+                (unsigned)uncompBytes, ctx.snap.pointCount, ctx.snap.trendN);
+  if (uncompBytes > 2000000 || ctx.snap.pointCount > 2000)
+    Serial.println("poll: WARN payload looks like full history; ?days filter not applied?");
+  uint32_t scanMs = scanUs / 1000;
+  uint32_t inflateMs = inflateUs / 1000;
+  uint32_t readMs = readUs / 1000;
+  uint32_t cpuMs = scanMs + inflateMs;
+  uint32_t waitMs = wallMs > cpuMs + readMs ? wallMs - cpuMs - readMs : 0;
+  uint32_t netMs = wallMs > cpuMs ? wallMs - cpuMs : 0;
+  Serial.printf("measure: body encoding=%s comp=%u uncomp=%u wall=%ums scan=%ums inflate=%ums readBytes=%ums wait=%ums reads=%u avgRead=%uB net=%.0fKB/s\n",
+                encoding, (unsigned)compBytes, (unsigned)uncompBytes,
+                (unsigned)wallMs, (unsigned)scanMs, (unsigned)inflateMs,
+                (unsigned)readMs, (unsigned)waitMs, (unsigned)nReads,
+                nReads ? (unsigned)(compBytes / nReads) : 0,
+                (netMs > 0) ? (double)compBytes / 1.024 / (double)netMs : 0.0);
+}
+
+// Stream an uncompressed HTTP body through the scanner. Runs on the background
+// poll task into the workspace's private ring + staging snapshot; never touches
+// gSnap.
+static bool parseStream(ScanCtx& ctx, NetworkClient& stream, int contentLen, bool chunked) {
+  uint8_t chunk[512];
+  size_t total = 0;
+  HttpBodyReader reader(stream, contentLen, chunked);
+  // [measure] split wall time into network (wait + readBytes) vs scanner CPU.
+  uint32_t tStart = millis();
+  uint32_t scanUs = 0;
+  while (true) {
+    int rd = reader.read(chunk, sizeof(chunk));
+    if (rd < 0) {
+      if (reader.stalled) {
+        Serial.println("poll: stream stall");
+        break;
+      }
+      snprintf(gLastErr, sizeof(gLastErr), "chunk err");
+      Serial.println("poll: chunked framing error");
+      return false;
     }
-    lastData = millis();
-    for (int k = 0; k < rd; k++) scanFeed(st, (char)chunk[k]);
+    if (rd == 0) break;
+    uint32_t s0 = micros();
+    for (int k = 0; k < rd; k++) scanFeed(ctx, (char)chunk[k]);
+    scanUs += micros() - s0;
     total += (size_t)rd;
   }
-  scanFinish(st);
-  Serial.printf("poll: stream scanned %u bytes, pts=%d trend=%d\n",
-                (unsigned)total, gSnap.pointCount, gSnap.trendN);
+  scanFinish(ctx);
+  logStreamSummary(ctx, "identity", total, total, millis() - tStart,
+                   scanUs, 0, reader.readUs, reader.nReads);
   if (total == 0) {
+    snprintf(gLastErr, sizeof(gLastErr), "empty body");
+    return false;
+  }
+  return true;
+}
+
+// PSRAM-backed workspace for streaming gzip decompression (~47 KB).
+// Allocated on demand in PSRAM so the 8 KB poll-task stack stays light.
+static const size_t GZIP_IN_BUF_SIZE = 4096;
+struct GzipWork {
+  tinfl_decompressor infl;
+  uint8_t outDict[TINFL_LZ_DICT_SIZE];
+  uint8_t inBuf[GZIP_IN_BUF_SIZE];
+};
+
+// Buffered input window shared across RFC 1952 header, tinfl deflate, and
+// 8-byte trailer so bytes left over after TINFL_STATUS_DONE feed the trailer.
+struct GzipInput {
+  HttpBodyReader& reader;
+  uint8_t* buf;
+  size_t cap;
+  size_t pos = 0;
+  size_t len = 0;
+  bool eof = false;
+  // Last 8 body bytes ever received (the RFC 1952 trailer for a single-member
+  // stream). ROM tinfl (old miniz) may pull trailer bytes into its bit buffer
+  // before returning DONE and does not give them back, so the trailer cannot
+  // be re-read from buf; keep a rolling copy instead.
+  uint8_t tail[8];
+  size_t tailN = 0;
+
+  void noteTail(const uint8_t* p, size_t n) {
+    if (n >= sizeof(tail)) {
+      memcpy(tail, p + n - sizeof(tail), sizeof(tail));
+      tailN = sizeof(tail);
+      return;
+    }
+    size_t keep = tailN + n > sizeof(tail) ? sizeof(tail) - n : tailN;
+    memmove(tail, tail + (tailN - keep), keep);
+    memcpy(tail + keep, p, n);
+    tailN = keep + n;
+  }
+
+  // Compact unconsumed bytes and refill from the HTTP body reader.
+  // Returns >0 bytes added, 0 on EOF, -1 on stall/framing error.
+  int fill() {
+    if (pos > 0) {
+      size_t rem = len - pos;
+      if (rem > 0) memmove(buf, buf + pos, rem);
+      pos = 0;
+      len = rem;
+    }
+    if (eof || len >= cap) return 0;
+    int n = reader.read(buf + len, cap - len);
+    if (n < 0) return -1;
+    if (n == 0) { eof = true; return 0; }
+    noteTail(buf + len, (size_t)n);
+    len += (size_t)n;
+    return n;
+  }
+
+  bool readByte(uint8_t& out) {
+    while (pos >= len) {
+      int n = fill();
+      if (n <= 0) return false;
+    }
+    out = buf[pos++];
+    return true;
+  }
+
+  bool readExact(uint8_t* dst, size_t n) {
+    size_t got = 0;
+    while (got < n) {
+      if (pos >= len) {
+        int r = fill();
+        if (r <= 0) return false;
+      }
+      size_t take = len - pos;
+      if (take > n - got) take = n - got;
+      memcpy(dst + got, buf + pos, take);
+      pos += take;
+      got += take;
+    }
+    return true;
+  }
+
+  bool skipBytes(size_t n) {
+    uint8_t b = 0;
+    for (size_t i = 0; i < n; i++) {
+      if (!readByte(b)) return false;
+    }
+    return true;
+  }
+
+  bool skipCString() {
+    uint8_t b = 0;
+    do {
+      if (!readByte(b)) return false;
+    } while (b != 0);
+    return true;
+  }
+};
+
+// Stream a gzip-compressed HTTP body through ESP32-S3 ROM miniz tinfl into
+// scanFeed(). Validates RFC 1952 header and trailing CRC32 + ISIZE.
+static bool parseGzipStream(ScanCtx& ctx, NetworkClient& stream, int contentLen, bool chunked) {
+  GzipWork* work = (GzipWork*)heap_caps_malloc(sizeof(GzipWork), MALLOC_CAP_SPIRAM);
+  if (!work) {
+    snprintf(gLastErr, sizeof(gLastErr), "gzip oom");
+    Serial.println("gzip: PSRAM alloc fail");
+    return false;
+  }
+  struct WorkGuard {
+    GzipWork* ptr;
+    ~WorkGuard() { heap_caps_free(ptr); }
+  } guard{work};
+
+  HttpBodyReader reader(stream, contentLen, chunked);
+  GzipInput in{reader, work->inBuf, GZIP_IN_BUF_SIZE};
+
+  uint32_t tStart = millis();
+  uint32_t scanUs = 0;
+  uint32_t inflateUs = 0;
+
+  // 1. Parse RFC 1952 gzip header (10-byte fixed header + optional fields).
+  uint8_t hdr[10];
+  if (!in.readExact(hdr, sizeof(hdr))) {
+    snprintf(gLastErr, sizeof(gLastErr), reader.stalled ? "gzip stall" : "gzip hdr");
+    Serial.printf("gzip: header read failed (stalled=%d err=%d wire=%u)\n",
+                  reader.stalled, reader.err, (unsigned)reader.wireBytes);
+    return false;
+  }
+  if (hdr[0] != 0x1F || hdr[1] != 0x8B || hdr[2] != 0x08 || (hdr[3] & 0xE0) != 0) {
+    snprintf(gLastErr, sizeof(gLastErr), "gzip hdr");
+    Serial.printf("gzip: bad header %02x %02x cm=%u flg=%02x\n",
+                  hdr[0], hdr[1], hdr[2], hdr[3]);
+    return false;
+  }
+  uint8_t flg = hdr[3];
+  if (flg & 0x04) {  // FEXTRA
+    uint8_t xlenBuf[2];
+    if (!in.readExact(xlenBuf, 2)) {
+      snprintf(gLastErr, sizeof(gLastErr), "gzip hdr");
+      Serial.println("gzip: truncated FEXTRA len");
+      return false;
+    }
+    size_t xlen = (size_t)xlenBuf[0] | ((size_t)xlenBuf[1] << 8);
+    if (!in.skipBytes(xlen)) {
+      snprintf(gLastErr, sizeof(gLastErr), "gzip hdr");
+      Serial.println("gzip: truncated FEXTRA");
+      return false;
+    }
+  }
+  if ((flg & 0x08) && !in.skipCString()) {  // FNAME
+    snprintf(gLastErr, sizeof(gLastErr), "gzip hdr");
+    Serial.println("gzip: truncated FNAME");
+    return false;
+  }
+  if ((flg & 0x10) && !in.skipCString()) {  // FCOMMENT
+    snprintf(gLastErr, sizeof(gLastErr), "gzip hdr");
+    Serial.println("gzip: truncated FCOMMENT");
+    return false;
+  }
+  if ((flg & 0x02) && !in.skipBytes(2)) {  // FHCRC
+    snprintf(gLastErr, sizeof(gLastErr), "gzip hdr");
+    Serial.println("gzip: truncated FHCRC");
+    return false;
+  }
+
+  // 2. Raw deflate decompression via ROM tinfl using a 32 KB wrapping dict.
+  tinfl_init(&work->infl);
+  size_t outOfs = 0;
+  size_t uncompTotal = 0;
+  uint32_t crc = MZ_CRC32_INIT;
+  bool needInput = (in.pos >= in.len);
+
+  while (true) {
+    if (needInput && !in.eof) {
+      int r = in.fill();
+      if (r < 0) {
+        snprintf(gLastErr, sizeof(gLastErr), reader.stalled ? "gzip stall" : "gzip chunk");
+        Serial.printf("gzip: read error during inflate (stalled=%d err=%d wire=%u)\n",
+                      reader.stalled, reader.err, (unsigned)reader.wireBytes);
+        return false;
+      }
+      needInput = false;
+    }
+
+    size_t inBytes = in.len - in.pos;
+    size_t outBytes = TINFL_LZ_DICT_SIZE - outOfs;
+    // Raw deflate (no TINFL_FLAG_PARSE_ZLIB_HEADER), wrapping 32 KB dictionary
+    // (no TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF).
+    uint32_t flags = in.eof ? 0u : (uint32_t)TINFL_FLAG_HAS_MORE_INPUT;
+
+    uint32_t d0 = micros();
+    tinfl_status st = tinfl_decompress(
+        &work->infl,
+        work->inBuf + in.pos, &inBytes,
+        work->outDict, work->outDict + outOfs, &outBytes,
+        flags);
+    inflateUs += micros() - d0;
+
+    in.pos += inBytes;
+    if (outBytes > 0) {
+      const uint8_t* outPtr = work->outDict + outOfs;
+      crc = (uint32_t)mz_crc32(crc, outPtr, outBytes);
+      uint32_t s0 = micros();
+      for (size_t k = 0; k < outBytes; k++) scanFeed(ctx, (char)outPtr[k]);
+      scanUs += micros() - s0;
+      uncompTotal += outBytes;
+      outOfs = (outOfs + outBytes) & (TINFL_LZ_DICT_SIZE - 1);
+    }
+
+    if (st == TINFL_STATUS_DONE) break;
+    if (st == TINFL_STATUS_HAS_MORE_OUTPUT) continue;
+    if (st == TINFL_STATUS_NEEDS_MORE_INPUT) {
+      if (in.eof || (in.pos == 0 && in.len == in.cap)) {
+        snprintf(gLastErr, sizeof(gLastErr), "gzip trunc");
+        Serial.printf("gzip: premature EOF (wire=%u uncomp=%u)\n",
+                      (unsigned)reader.wireBytes, (unsigned)uncompTotal);
+        return false;
+      }
+      needInput = true;
+      continue;
+    }
+    snprintf(gLastErr, sizeof(gLastErr), "gzip err %d", (int)st);
+    Serial.printf("gzip: tinfl error %d (wire=%u uncomp=%u)\n",
+                  (int)st, (unsigned)reader.wireBytes, (unsigned)uncompTotal);
+    return false;
+  }
+
+  // 3. Verify RFC 1952 8-byte trailer (CRC32 + ISIZE mod 2^32, little-endian).
+  // Drain whatever is left of the body (the trailer, minus any bytes tinfl
+  // already swallowed), then take the trailer from the rolling tail copy.
+  in.pos = in.len;
+  while (!in.eof) {
+    int r = in.fill();
+    if (r < 0) break;
+    in.pos = in.len;
+  }
+  const uint8_t* trailer = in.tail;
+  if (!in.eof || in.tailN < 8) {
+    snprintf(gLastErr, sizeof(gLastErr), reader.stalled ? "gzip stall" : "gzip trunc");
+    Serial.printf("gzip: truncated trailer (stalled=%d wire=%u uncomp=%u)\n",
+                  reader.stalled, (unsigned)reader.wireBytes, (unsigned)uncompTotal);
+    return false;
+  }
+  uint32_t expectCrc = (uint32_t)trailer[0]
+                     | ((uint32_t)trailer[1] << 8)
+                     | ((uint32_t)trailer[2] << 16)
+                     | ((uint32_t)trailer[3] << 24);
+  uint32_t expectSize = (uint32_t)trailer[4]
+                      | ((uint32_t)trailer[5] << 8)
+                      | ((uint32_t)trailer[6] << 16)
+                      | ((uint32_t)trailer[7] << 24);
+  if (expectSize != (uint32_t)uncompTotal) {
+    snprintf(gLastErr, sizeof(gLastErr), "gzip isize");
+    Serial.printf("gzip: ISIZE mismatch expect=%u got=%u\n",
+                  (unsigned)expectSize, (unsigned)(uint32_t)uncompTotal);
+    return false;
+  }
+  if (expectCrc != crc) {
+    snprintf(gLastErr, sizeof(gLastErr), "gzip crc");
+    Serial.printf("gzip: CRC32 mismatch expect=0x%08x got=0x%08x\n",
+                  (unsigned)expectCrc, (unsigned)crc);
+    return false;
+  }
+
+  scanFinish(ctx);
+  logStreamSummary(ctx, "gzip", reader.wireBytes, uncompTotal, millis() - tStart,
+                   scanUs, inflateUs, reader.readUs, reader.nReads);
+  if (uncompTotal == 0) {
     snprintf(gLastErr, sizeof(gLastErr), "empty body");
     return false;
   }
@@ -756,21 +1222,32 @@ static bool triggerUpstreamRefresh() {
   return code == 200;
 }
 
-static bool httpFetchParse(const char* tag) {
+// Runs on the background poll task; gLink/gLastErr are the same shared
+// globals the loop thread reads for the bottom bar.
+static bool httpFetchParse(ScanCtx& ctx, const char* tag) {
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(12);
   HTTPClient http;
   http.setConnectTimeout(15000);
   http.setTimeout(30000);
-  http.useHTTP10(true);
+  // HTTP/1.1 is required so arduino-esp32 HTTPClient emits Accept-Encoding
+  // (HTTPClient::addHeader silently drops Accept-Encoding, and useHTTP10(true)
+  // omits _acceptEncoding altogether). setReuse(false) keeps Connection: close.
+  http.useHTTP10(false);
+  http.setReuse(false);
+  http.setAcceptEncoding("gzip");
   if (!http.begin(client, DATA_URL)) {
     gLink = LinkState::HttpError;
     snprintf(gLastErr, sizeof(gLastErr), "begin fail");
     Serial.printf("%s: begin fail\n", tag);
     return false;
   }
+  const char* hdrKeys[] = {"Content-Encoding", "Transfer-Encoding"};
+  http.collectHeaders(hdrKeys, 2);
+  uint32_t g0 = millis();
   int code = http.GET();
+  Serial.printf("measure: %s TLS+GET+headers=%ums\n", tag, (unsigned)(millis() - g0));
   if (code != 200) {
     snprintf(gLastErr, sizeof(gLastErr), "HTTP %d", code);
     gLink = LinkState::HttpError;
@@ -779,39 +1256,54 @@ static bool httpFetchParse(const char* tag) {
     return false;
   }
   int sz = http.getSize();
-  Serial.printf("%s: HTTP 200 content-length=%d\n", tag, sz);
-  bool ok = parseStream(http.getStream(), sz);
+  String enc = http.header("Content-Encoding");
+  enc.trim();
+  enc.toLowerCase();
+  bool isGzip = (enc == "gzip" || enc == "x-gzip");
+  String te = http.header("Transfer-Encoding");
+  te.trim();
+  te.toLowerCase();
+  bool isChunked = (te.indexOf("chunked") >= 0);
+  Serial.printf("%s: HTTP 200 content-length=%d encoding=%s%s\n",
+                tag, sz, isGzip ? "gzip" : (enc.length() ? enc.c_str() : "identity"),
+                isChunked ? " chunked" : "");
+  bool ok = isGzip
+      ? parseGzipStream(ctx, http.getStream(), sz, isChunked)
+      : parseStream(ctx, http.getStream(), sz, isChunked);
   http.end();
   if (!ok) {
     gLink = LinkState::ParseError;
-    Serial.printf("%s: parse error\n", tag);
+    Serial.printf("%s: parse error (%s)\n", tag, gLastErr);
     return false;
   }
   return true;
 }
 
-static bool pollData() {
+// Runs on the background poll task. Fills ctx.snap and logs a summary;
+// the loop thread publishes ctx.snap into gSnap only on success, so a
+// failed/empty poll keeps the last good screen.
+static bool pollData(ScanCtx& ctx) {
   if (WiFi.status() != WL_CONNECTED) {
     gLink = LinkState::Offline;
     snprintf(gLastErr, sizeof(gLastErr), "wifi down");
     return false;
   }
 
-  if (!httpFetchParse("poll")) return false;
+  if (!httpFetchParse(ctx, "poll")) return false;
 
-  if (!gSnap.valid || gSnap.pointCount <= 0) {
+  if (!ctx.snap.valid || ctx.snap.pointCount <= 0) {
     Serial.println("poll: 0 points, triggering upstream refresh");
     triggerUpstreamRefresh();
     delay(TRIGGER_RETRY_MS);
-    if (httpFetchParse("poll retry") && gSnap.valid && gSnap.pointCount > 0) {
+    scanCtxReset(ctx);
+    if (httpFetchParse(ctx, "poll retry") && ctx.snap.valid && ctx.snap.pointCount > 0) {
       gLink = LinkState::Online;
       gLastErr[0] = 0;
       Serial.printf("poll ok (after trigger): pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f Y=%.0f\n",
-                    gSnap.pointCount, gSnap.trendN,
-                    gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
-                    gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
-                    gSnap.src[4].remainWeek, gSnap.src[5].remainWeek);
-      logCombinedForecasts();
+                    ctx.snap.pointCount, ctx.snap.trendN,
+                    ctx.snap.src[0].remainWeek, ctx.snap.src[1].remainWeek,
+                    ctx.snap.src[2].remainWeek, ctx.snap.src[3].remainWeek,
+                    ctx.snap.src[4].remainWeek, ctx.snap.src[5].remainWeek);
       return true;
     }
     gLink = LinkState::Empty;
@@ -822,11 +1314,10 @@ static bool pollData() {
   gLink = LinkState::Online;
   gLastErr[0] = 0;
   Serial.printf("poll ok: pts=%d trend=%d C=%.0f H=%.0f A=%.0f G=%.0f O=%.0f Y=%.0f\n",
-                gSnap.pointCount, gSnap.trendN,
-                gSnap.src[0].remainWeek, gSnap.src[1].remainWeek,
-                gSnap.src[2].remainWeek, gSnap.src[3].remainWeek,
-                gSnap.src[4].remainWeek, gSnap.src[5].remainWeek);
-  logCombinedForecasts();
+                ctx.snap.pointCount, ctx.snap.trendN,
+                ctx.snap.src[0].remainWeek, ctx.snap.src[1].remainWeek,
+                ctx.snap.src[2].remainWeek, ctx.snap.src[3].remainWeek,
+                ctx.snap.src[4].remainWeek, ctx.snap.src[5].remainWeek);
   return true;
 }
 
@@ -1329,8 +1820,8 @@ static void renderCombined() {
   if (haveLocalTime(&clock)) {
     snprintf(clockText, sizeof(clockText), "%02d:%02d", clock.tm_hour, clock.tm_min);
   }
-  // Leave room for the temporary UPD badge at x=372..399, y=0..11.
-  strRight(gShowUpdateBadge ? W - 36 : W - 12, 18, clockText);
+  // Leave room for the temporary SYNC/UPD badge at x=366..399, y=0..11.
+  strRight((gShowUpdateBadge || gPollBusy) ? W - 36 : W - 12, 18, clockText);
   u8g2.drawHLine(8, 24, W - 16);
   u8g2.drawHLine(8, 25, W - 16);
 
@@ -1418,6 +1909,16 @@ static void render() {
     else renderCombined();
   }
 
+  // Badges drawn after page render so they overlay regardless of page:
+  // SYNC while a background poll is fetching; UPD for 3s after new data lands.
+  if (gPollBusy) {
+    u8g2.setDrawColor(1);
+    u8g2.drawBox(W - 34, 0, 34, 12);
+    u8g2.setDrawColor(0);
+    u8g2.setFont(u8g2_font_6x13_tf);
+    u8g2.drawStr(W - 32, 10, "SYNC");
+    u8g2.setDrawColor(1);
+  }
   drawUpdateBadge();
   u8g2.sendBuffer();
 }
@@ -1471,15 +1972,37 @@ static bool ensureWifi(uint32_t timeoutMs) {
   }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("WiFi OK %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("measure: wifi connect=%ums rssi=%d\n", (unsigned)(millis() - start), WiFi.RSSI());
     return true;
   }
   Serial.println("WiFi connect fail");
   return false;
 }
 
-// Connect → GET /data → always radio off after (success or fail).
-static void pollCycle() {
-  if (!ensureWifi(WIFI_CONNECT_MS)) {
+// ---- background poll (FreeRTOS task) ----
+// The /data fetch (Wi-Fi connect + 5.5 MB stream scan) used to run inline in
+// loop(), blocking button handling for 6-10s per poll: short presses during a
+// poll were silently lost, which looked like a freeze. The poll now runs in a
+// short-lived FreeRTOS task; loop() keeps scanning BOOT every 50 ms, so page
+// flips work even mid-poll. The scanner accumulates into ctx.snap; on success
+// the loop thread swaps it into gSnap under gPollMutex, so render() never
+// sees a half-written snapshot.
+static ScanCtx* gPollCtx = nullptr;              // PSRAM workspace, single-owner
+
+static portMUX_TYPE gPollMux = portMUX_INITIALIZER_UNLOCKED;  // cross-core flag handoff
+
+static void pollTaskFn(void* arg) {
+  ScanCtx& ctx = *gPollCtx;
+  bool ok = false;
+  uint32_t p0 = millis();  // [measure]
+  if (ensureWifi(WIFI_CONNECT_MS)) {
+    // NOTE: WiFi.setSleep(false) here was tried 2026-11-27 and did not help
+    // (78-88 KB/s vs 51-91 KB/s with modem sleep). The cap is lwIP's TCP
+    // receive window (CONFIG_LWIP_TCP_WND_DEFAULT=5760 in the precompiled
+    // arduino-esp32 3.3.7 libs): ~5.7 KB per RTT. Shrinking bytes (gzip) is
+    // the lever, not radio power mode.
+    ok = pollData(ctx);
+  } else {
     if (!gSnap.valid) {
       gLink = LinkState::Offline;
       snprintf(gLastErr, sizeof(gLastErr), "wifi down");
@@ -1487,12 +2010,70 @@ static void pollCycle() {
       // Keep showing last snapshot; Online→idle in linkLabel when radio off.
       snprintf(gLastErr, sizeof(gLastErr), "wifi fail");
     }
-    radioOff();
-    return;
   }
+  Serial.printf("measure: poll total=%ums ok=%d\n", (unsigned)(millis() - p0), ok);
+  radioOff();  // radio only for poll; time keeps running locally
+  portENTER_CRITICAL(&gPollMux);
+  gPollResultOk = ok;
+  gPollResultReady = true;
+  portEXIT_CRITICAL(&gPollMux);
+  vTaskDelete(nullptr);
+}
 
-  pollData();
-  radioOff();
+// Kick off a background poll. Returns false if one is already running.
+// showUpd: publish-time 3s "UPD" badge (manual-flip deferred poll).
+static bool startPollAsync(bool showUpd) {
+  if (gPollBusy) return false;
+  if (!gPollCtx) {
+    gPollCtx = (ScanCtx*)ps_malloc(sizeof(ScanCtx));
+    if (!gPollCtx) {
+      Serial.println("poll: ps_malloc fail");
+      return false;
+    }
+  }
+  scanCtxReset(*gPollCtx);
+  portENTER_CRITICAL(&gPollMux);
+  gPollResultReady = false;
+  gPollResultOk = false;
+  portEXIT_CRITICAL(&gPollMux);
+  gPollResultShowUpd = showUpd;
+  gPollBusy = true;
+  BaseType_t rc = xTaskCreate(pollTaskFn, "poll", 8192, nullptr, 1, nullptr);
+  if (rc != pdPASS) {
+    Serial.println("poll: xTaskCreate fail");
+    gPollBusy = false;
+    return false;
+  }
+  return true;
+}
+
+// Loop-side: publish a finished poll result, if any. The render/UPD badge
+// side effects are left to the caller (loop) so they batch into one frame.
+static bool servicePollResult(uint32_t now) {
+  bool ready;
+  portENTER_CRITICAL(&gPollMux);
+  ready = gPollResultReady;
+  if (ready) gPollResultReady = false;
+  portEXIT_CRITICAL(&gPollMux);
+  if (!ready) return false;
+  gPollBusy = false;  // poll task has exited; workspace is single-owner again
+
+  bool published = false;
+  bool showUpd = gPollResultShowUpd;
+  gPollResultShowUpd = false;
+  if (gPollResultOk && gPollCtx) {
+    if (xSemaphoreTake(gPollMutex, portMAX_DELAY) == pdTRUE) {
+      gSnap = gPollCtx->snap;
+      xSemaphoreGive(gPollMutex);
+    }
+    logCombinedForecasts();
+    published = true;
+  }
+  if (showUpd && published) {
+    gShowUpdateBadge = true;
+    gUpdateBadgeUntil = now + 3000;
+  }
+  return published;
 }
 
 static void startWifiPortal() {
@@ -1508,16 +2089,17 @@ static void startWifiPortal() {
       snprintf(gLastErr, sizeof(gLastErr), "portal timeout");
     } else {
       configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov", "ntp.aliyun.com");
-      pollData();
     }
   } else {
     Serial.printf("WiFi OK %s\n", WiFi.localIP().toString().c_str());
     configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov", "ntp.aliyun.com");
-    pollData();
   }
   radioOff();
   render();
   noteDrawnMinute();
+  // Portal blocked loop() (WiFiManager is synchronous); kick a background
+  // refresh so the dashboard comes back with fresh data + shows SYNC/UPD.
+  if (WiFi.status() == WL_CONNECTED) startPollAsync(false);
 }
 
 static void connectWiFi() {
@@ -1557,8 +2139,15 @@ static void handleButton(uint32_t now) {
 
   if (b == LOW && gBtnDownMs && !gLongPressFired && (now - gBtnDownMs >= LONG_PRESS_MS)) {
     gLongPressFired = true;
-    Serial.println("BOOT long-press → WiFi portal");
-    startWifiPortal();
+    if (gPollBusy) {
+      // A poll owns the radio right now; run the portal right after it
+      // finishes (loop() picks gPortalPending up in servicePollResult).
+      gPortalPending = true;
+      Serial.println("BOOT long-press → WiFi portal (queued, poll running)");
+    } else {
+      Serial.println("BOOT long-press → WiFi portal");
+      startWifiPortal();
+    }
     gBtnDownMs = 0;
     // portal returns later; restart auto-page so it doesn't immediately flip
     gLastPageChange = millis();
@@ -1576,6 +2165,20 @@ static void handleButton(uint32_t now) {
   }
 
   gLastBtn = b;
+
+  // KEY (GPIO18): short press → jump directly to P2, same deferred-poll
+  // behaviour as a BOOT flip. No long-press action.
+  int k = digitalRead(BTN_KEY);
+  if (gLastKey == HIGH && k == LOW) gKeyDownMs = now;
+  if (gLastKey == LOW && k == HIGH) {
+    uint32_t held = gKeyDownMs ? (now - gKeyDownMs) : 0;
+    if (held >= 30) {
+      gLastManualFlip = now;
+      showPage(now, CHART_PAGE_BASE, "KEY");
+    }
+    gKeyDownMs = 0;
+  }
+  gLastKey = k;
 }
 
 // ---- setup / loop ----
@@ -1583,10 +2186,14 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("aiusage_home: boot (P0-P7 / 5m page / 15m poll / radio-off)");
+  Serial.println("aiusage_home: boot (P0-P7 / 5m page / 15m poll / bg-poll / radio-off)");
+
+  gPollMutex = xSemaphoreCreateMutex();
 
   pinMode(BTN_BOOT, INPUT_PULLUP);
   gLastBtn = digitalRead(BTN_BOOT);
+  pinMode(BTN_KEY, INPUT_PULLUP);
+  gLastKey = digitalRead(BTN_KEY);
   analogReadResolution(12);
 
   SPI.begin(RLCD_SCK, -1, RLCD_MOSI, RLCD_CS);
@@ -1600,10 +2207,6 @@ void setup() {
     configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov", "ntp.aliyun.com");
     struct tm t;
     getLocalTime(&t, 5000);
-    gLink = LinkState::Connecting;
-    render();
-    pollData();
-    radioOff();  // radio only for poll; time keeps running locally
   } else {
     gLink = LinkState::Offline;
     radioOff();
@@ -1612,6 +2215,9 @@ void setup() {
   render();
   noteDrawnMinute();
   gLastPoll = gLastRender = gLastPageChange = millis();
+  // First poll runs in the background; the screen is already up and BOOT
+  // stays responsive during the Wi-Fi connect + stream scan.
+  if (WiFi.status() == WL_CONNECTED || secretsConfigured()) startPollAsync(false);
   Serial.println("aiusage_home: setup done");
 }
 
@@ -1619,32 +2225,52 @@ void loop() {
   uint32_t now = millis();
   handleButton(now);
 
-  // Auto page flip every AUTO_PAGE_MS; BOOT short-press resets the timer via advancePage.
   bool busySetup = (gLink == LinkState::WifiSetup || gLink == LinkState::Connecting
                     || gLink == LinkState::Booting);
+  bool pollRunning = gPollBusy;
+
+  // Publish finished background poll results (snapshot swap + optional UPD).
+  if (servicePollResult(now)) {
+    render();
+    noteDrawnMinute();
+    gLastRender = now;
+    // Long-press that arrived mid-poll: open the portal now that radio is free.
+    if (gPortalPending) {
+      gPortalPending = false;
+      Serial.println("BOOT long-press → WiFi portal (after poll)");
+      startWifiPortal();
+      gLastPageChange = millis();
+    }
+  }
+
+  // Auto page flip every AUTO_PAGE_MS; BOOT short-press resets the timer via advancePage.
   if (!busySetup && (now - gLastPageChange >= AUTO_PAGE_MS)) {
     advancePage(now, "auto");
   }
 
   // Deferred poll: if user manually flipped and then stayed on the same page
-  // for 10 seconds, fetch cloud data and refresh the screen.
+  // for 10 seconds, fetch cloud data in the background (page keeps flipping).
   static const uint32_t MANUAL_POLL_DELAY_MS = 10000;
-  if (gLastManualFlip && !busySetup && (now - gLastManualFlip >= MANUAL_POLL_DELAY_MS)) {
+  if (gLastManualFlip && !busySetup && !gPollBusy
+      && (now - gLastManualFlip >= MANUAL_POLL_DELAY_MS)) {
     gLastManualFlip = 0;  // one-shot
     Serial.println("deferred poll: 10s idle after manual flip");
-    pollCycle();  // ensureWifi → GET → radioOff
+    startPollAsync(true);
     gLastPoll = now;
-    gShowUpdateBadge = true;
-    gUpdateBadgeUntil = now + 3000;  // badge visible for 3 seconds
+  } else if (!gPollBusy && (now - gLastPoll >= POLL_MS)) {
+    startPollAsync(false);
+    gLastPoll = now;
+  }
+
+  // SYNC badge edge: poll just started → repaint to show it.
+  static bool sPrevPollBusy = false;
+  if (pollRunning && !sPrevPollBusy && !busySetup) {
     render();
-    noteDrawnMinute();
     gLastRender = now;
-  } else if (now - gLastPoll >= POLL_MS) {
-    pollCycle();  // ensureWifi → GET → radioOff
-    render();
-    noteDrawnMinute();
-    gLastPoll = gLastRender = now;
-  } else if (minuteChanged()) {
+  }
+  sPrevPollBusy = pollRunning;
+
+  if (minuteChanged()) {
     // Clock/battery: full redraw only when local minute ticks
     render();
     gLastRender = now;

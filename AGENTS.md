@@ -15,6 +15,7 @@
 | 理解 aiusage API、頁面語義與刷新節奏 | `docs/ui-and-data.md` |
 | 調整電腦端用量分析原型 | `web/INDEX.md` → `aiusage-analysis.html` |
 | 查電池實測、待辦、歷史決策與刻意不做事項 | `docs/power-and-progress.md` |
+| 有到期日的短期待辦 | `todo.md` |
 | 查已放棄、重複、未完成與待核准刪除項目 | `docs/cleanup-plan.md` |
 | 人類導向的專案總覽 | `README.md` |
 

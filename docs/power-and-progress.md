@@ -122,3 +122,23 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 - 實機燒錄成功，Serial：`poll ok: ... O=98 Y=96`、`P0 AGY: remain=96.3 ... forecast=LEFT 95% ~$4.75`。
 - 同日修正 `flash.sh` 誤報 exit 4：Serial 驗收窗 25→120 秒（5.4 MB `/data` 掃描約 30–60 秒以上才出 `poll ok:`；75 秒仍曾逾時，且埠重開時常截掉 boot 字串前段）。
 - 不改資料拉取頻率、Wi-Fi 策略或刷新節奏；耗電不變。P0 欄名改 helvB08 以保留欄界留白；`ui/` wireframe 與六欄 SVG 快照已同步（host 端 U8g2 實際字型輸出）。2026-11-26 使用者實機目視確認六欄（含 helvB08 欄名）清楚可讀。
+
+### 2026-11-27：輪詢改背景執行，按鍵不再被阻塞吞掉
+
+- **動機**：`/data` 輪詢（Wi-Fi 連線 + 5.5 MB 串流掃描約 6–10 秒）原本同步跑在 `loop()` 內，期間 `handleButton()` 完全沒被輪詢，短按 BOOT 直接遺失，使用者看起來就是「當機」。同日先發生兩起同類誤判：使用者按了未綁功能的 KEY 鍵、以及按壓落在延遲輪該阻塞視窗，皆以 Serial 證據排除 MCU 當機。
+- **改法**：輪詢移入一次性 FreeRTOS task（`startPollAsync`→`pollTaskFn`）；掃描器全部參數化為 `ScanCtx`（私有 ring + staging snapshot，定義在 `usage_scan.h`），任務完成後由 loop 執行緒在 `gPollMutex` 下發布到 `gSnap`，杜絕撕裂讀。輪詢中每幀顯示 `SYNC` 徽章（P0 時鐘同步左移避讓），成功發布後 `UPD` 3 秒（僅手動翻頁延遲輪詢顯示，維持原行為）。輪詢中長按 BOOT 排隊到 `gPortalPending`，結束後才開 portal。portal 結束後自動補一次背景輪詢。工作區 `gPollCtx` 用 `ps_malloc` 配置在 PSRAM（8 MB OPI，維持原設定）。
+- **事故教訓（首燒即 crash-reboot 迴圈）**：`ps_malloc` 是裸記憶體，`UsageSnapshot::src[i].name`（`const char*`）不會被初始化，發布時垃圾指標被拷進 `gSnap`，`logCombinedForecasts()` 的 `%s` 立即 LoadProhibited 崩潰（EXCVADDR `0x02a9c2ac`，backtrace 落在 `_svfprintf_r`；板子重開後 autoConnect portal 畫面讓螢幕停在 `WIFI SETUP`）。修復：`scanCtxReset()` 對 staging snapshot 做 placement-new 重跑成員初始化。**反例：凡是 `ps_malloc` 配置的 C++ 物件，必須 placement-new 或 memset 後手動賦初值，否則含指標成員的結構必崩。**
+- **驗證**：重燒後 Serial 完整序列 `poll ok → P0 六行預測正常列印`，無 Guru Meditation；實機操作確認 SYNC 徽章期間短按 BOOT 立即換頁（Serial 同步出現 `(BOOT)` 換頁）、`SYNC → UPD` 徽章序列正確。耗電結構不變：radio 仍在每次輪詢後關閉，僅新增一個輪詢期間存活的 task（8 KB stack），輪詢頻率與時長未動。
+
+### 2026-11-27：KEY 鍵綁定直跳 P2；PWR 鍵確認不可由韌體讀取
+
+- **KEY（GPIO18）**：短按（≥30 ms，放開時觸發）直接跳到 P2（Claude 10 天圖），同 BOOT 翻頁一樣重設 5 分鐘自動翻頁計時，並在 10 秒無操作後補一次背景輪詢。無長按功能。只新增 `digitalRead` 輪詢（隨 `loop()` 每 50 ms），刷新、Wi-Fi、輪詢頻率與耗電均不變。2026-11-27 使用者實機確認正常。
+- **PWR 鍵（schematic Key3）**：接到開關機 IC U3 `ECJ23001-4FCBD6` 的 KEY 腳，OUTH 只驅動電源路徑，**沒有接到任何 ESP32 GPIO**，韌體無法偵測「開機後按一下 PWR」。
+- **SYNC 慢的原因（量測）**：`/data` 每次回傳自 2026-07-26 起的完整歷史，7,678 點、5,504,141 bytes；韌體只用最後一點 + 最近 10 天。Mac 端 curl 下載僅約 1.9 秒，ESP32 端要 Wi-Fi 重連 + TLS + 逐 byte 掃描 5.5 MB，約 30–60 秒以上。伺服器支援 gzip（壓縮後 209,635 bytes），但不支援 `?days=` 等過濾參數。待決：在 usage-web 加只回最近 N 天的端點，或韌體端解 gzip。
+- **SYNC 修正（同日完成）**：usage-web 新增 `/data?days=N`（keyboardMaestro commit 27fa966，已部署 Contabo；起算點為雲端最新 ts_epoch − N 天，非法值靜默回完整歷史）。韌體 `DATA_URL` 改為 `/data?days=11`（比 10 天趨勢窗多 1 天緩衝，本地 10 天切窗保留為第二道防線），並在下載 >2 MB 或 >2000 點時 Serial 印 `WARN`。`pointCount` 僅用於 log 與 `>0` 判斷，語義改為近 11 天點數不影響功能；0 點 trigger/retry 恢復路徑未動。
+- **驗證**：flash.sh exit 0；重置後 Serial：`stream scanned 708750 bytes, pts=897 trend=501`、`poll ok ... C=98 H=66 A=41 G=91 O=80 Y=96`，HTTP 200 到 `poll ok` 約 6.3 秒、Wi-Fi 連上到 radio off 約 7.3 秒（原 30–60 秒以上）。Wi-Fi 開啟時間大幅縮短，每次輪詢耗電下降；輪詢頻率、刷新、翻頁策略不變。KEY→P2 待使用者實機按鍵確認。未 commit／push。
+- **SYNC 耗時量測（同日，暫時性 `measure:` Serial log）**：連續兩次重開機輪詢（`/data?days=11`，708,992 bytes）：TLS+GET+headers 1.15／1.21 秒；body 牆鐘 7.9／13.9 秒，其中掃描器 CPU 僅 348 ms、`readBytes` 11 ms，其餘 7.6／13.6 秒都在等網路資料（`available()==0`），實效 91／51 KB/s。結論：瓶頸是 Wi-Fi／TLS 傳輸速率，不是解析；兩次差近一倍顯示受無線環境影響大。下一步候選：下載期間 `WiFi.setSleep(false)`（現為 modem sleep）或 gzip 減少傳輸量。開機輪詢沿用 setup 已連線的 Wi-Fi，冷連線時間（`measure: wifi connect`）尚未取得，需等 15 分鐘排程輪詢或 KEY 延遲輪詢。
+- **`setSleep(false)` 實驗（同日，已還原）**：下載期間關 modem sleep，三次 body 實效 88／78／84 KB/s、poll 總計 9.2／10.5／9.5 秒，與開 sleep 時（91／51，還原後再測 50 KB/s；平均約 64 vs 83 KB/s）相比可能略快、波動較小，但樣本少（3 vs 3）且未達質變，先還原。推論瓶頸是 lwIP TCP 接收窗：預編譯 arduino-esp32 3.3.7 的 `CONFIG_LWIP_TCP_WND_DEFAULT=5760`，吞吐 ≈ 5.7 KB／RTT（Mac 到伺服器 TCP 連線約 38 ms，ESP32 經 Wi-Fi 更高），與量到的 ~80–90 KB/s 吻合。要改窗大小需自建 arduino-esp32 lib，成本高；有效手段是減少傳輸 bytes（gzip，709 KB → 26 KB）。
+- **gzip 串流解壓（同日完成）**：由 agy（delegate，gemini-4-neon-high，可寫，僅改 `aiusage_home.ino`）實作、Claude 審核。請求改 HTTP/1.1 + `setAcceptEncoding("gzip")`（arduino-esp32 3.3.7 的 `addHeader` 會靜默丟掉 `Accept-Encoding`，`useHTTP10(true)` 也不送），`setReuse(false)`；自帶 chunked 解碼（`HttpBodyReader`）；依 `Content-Encoding` 分派 gzip／identity（伺服器不壓縮時退回原路徑）。gzip 路徑：RFC 1952 header 解析 → ROM miniz `tinfl` raw deflate（32 KB 環狀字典 + 4 KB 輸入，約 47 KB 配在 PSRAM、RAII 釋放）→ 逐 byte `scanFeed`；驗 trailer CRC32（`mz_crc32`）與 ISIZE，失敗沿用上一份畫面。
+- **審核抓到的坑（首燒三次全失敗 `gzip trunc`）**：資料已完整解出 710,480 bytes，但 ROM 內建的舊版 miniz `tinfl` 在 DONE 前把 trailer 位元組吞進 bit buffer 且不退還，導致讀不到 8-byte trailer。修法：`GzipInput` 保留 body 最後 8 bytes 的滾動副本，DONE 後排空剩餘輸入再用該副本驗證。**反例：用 ROM tinfl 解 gzip 時不可假設 DONE 後輸入緩衝仍留有完整 trailer。**
+- **實測（連續 3 次重開機）**：comp 26,457 → uncomp 710,480 bytes，CRC／ISIZE 通過；body 581／588／744 ms（scan 約 365 ms、inflate 約 29 ms、網路等待 180–360 ms）；TLS+GET 約 0.94–1.03 秒；**poll 總計 1.5–1.7 秒**（identity 時 9–15 秒）。Wi-Fi 開啟時間再大幅縮短，每次輪詢耗電下降；輪詢頻率、刷新、翻頁、trigger/retry 流程不變。identity 退回路徑與 chunked 路徑僅經審閱與編譯，未在實機觸發。`measure:` log 仍保留。未 commit／push。

@@ -54,3 +54,19 @@ struct ScanState {
   ScanPoint slotPt;
   long pointCount = 0;
 };
+
+// Everything the scanner needs to accumulate a snapshot without touching the
+// UI's gSnap: a private trend ring and a staging snapshot the background poll
+// fills, plus the ingest label scratch. The loop thread publishes the staged
+// snapshot under a mutex after the poll task finishes.
+struct ScanCtx {
+  ScanState st;
+  TrendSlot ring[TREND_N];
+  int ringHead = 0;
+  int ringN = 0;
+  UsageSnapshot snap;      // staged result, published to gSnap on success
+  char ingestShort[20] = "";
+  bool seenIngest = false;
+};
+
+void scanCtxReset(ScanCtx& ctx);
