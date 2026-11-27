@@ -149,5 +149,4 @@ ADC 中段曲線較平，日間使用可能更耗電，低電末段也可能掉�
 - 使用者指定新頁序：P0 Claude、P1 Trend、P2 Alston、P3 Chihyi、P4 Grok、P5 Ollama、P6 AGY、P7 ALL DETAIL；ALL DETAIL 欄序改為 Claude／Alston／Chihyi／Grok／Ollama／AGY。開機第一頁因此是 Claude 圖；KEY 改跳 P0（Claude，跟內容走）。
 - 實作：新增 `PAGE_VIEW[]`（頁碼 → 畫面）與 `COMBINED_COL_ORDER[]`（欄位 → 來源索引），`SRC_KEYS` 來源索引不動，所以 P1 趨勢線型、Serial `P0 ...` 預測 log 順序（仍以來源索引）不變；單源圖頁碼標示改用 `gPage`。去掉 `CHART_PAGE_BASE`。
 - 同日再調整：P1 與 P7 對調，最終頁序為 P0 Claude、P1 ALL DETAIL、P2 Alston、P3 Chihyi、P4 Grok、P5 Ollama、P6 AGY、P7 Trend（`PAGE_VIEW = {0, COMBINED, 2, 1, 3, 4, 5, TREND}`）。
-- R1 400×300、1bpp、刷新與輪詢策略不變；實機燒錄後開機輪詢正常。`ui/aiusage-wireframe.html` 尚未同步新頁序（NEED_REVIEW）。
-- wireframe 同步（同日）：上方 NEED_REVIEW 已處理。`ui/aiusage-wireframe.html` 依新頁序重排 8 個 panel（頁碼、標籤、toolbar、說明同步；互動延遲更新改寫為 5 秒），`ui/all-detail-d.svg`／`all-detail-d-partial.svg` 以像素層級交換第 2、3 欄內容（x=73–135 ↔ 137–199，分隔線不動），保留 2026-11-26 快照數值；Chrome headless 截圖確認版面正常。建議歸檔上方 NEED_REVIEW 標記。
+- R1 400×300、1bpp、刷新與輪詢策略不變；實機燒錄後開機輪詢正常。wireframe 與 ALL DETAIL SVG 已於同日同步新頁序與欄序（原 NEED_REVIEW 已歸檔，見 `archive/need-review-archive.md`）。

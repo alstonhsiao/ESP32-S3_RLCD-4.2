@@ -68,5 +68,4 @@ USD 為未使用額度的訂閱費分攤估值，並非退款或可兌現餘額�
 
 韌體 `N_SOURCES` 5→6、`PAGE_COUNT` 7→8。P0 由五個 76px 欄改為六個 64px 欄（x = 10 + i×64），週剩餘大字由 helvB18 改 helvB14、欄名由 helvB10 改 helvB08（OLLAMA／ALSTON 原本離分隔線僅 1px），bar 與分隔線寬 54px，其餘 y 座標不變。P1 圖例改 6x10 單行，AGY 使用新增的 style 5 細點線。P7 為 AGY 單源趨勢圖。顯示仍為 `U8G2_R1` 400×300、1bpp、無背光；抓取 15 分鐘、分鐘重畫、5 分鐘翻頁與 Wi-Fi 關閉策略不變，翻完一輪由 35 分鐘變 40 分鐘。
 
-`ui/aiusage-wireframe.html` 與 `ui/all-detail-d*.svg` 仍為五欄稿：NEED_REVIEW（待依實機畫面同步）。
-  → 2026-11-26 已同步：以 host 端 U8g2（實際字型）執行 `renderCombined()` 重新輸出六欄 SVG（正常／partial），三種情境（正常、partial、最寬數值）文字距欄界皆 ≥2px；wireframe 新增 P7 AGY、P1 第六線，頁碼改 /8。建議歸檔此 NEED_REVIEW。
+`ui/aiusage-wireframe.html` 與 `ui/all-detail-d*.svg` 已與韌體同步：六欄（2026-11-26）、新頁序與 ALL DETAIL 欄序 Claude／Alston／Chihyi／Grok／Ollama／AGY（2026-11-27）。原 NEED_REVIEW 已歸檔，見 `archive/need-review-archive.md`。

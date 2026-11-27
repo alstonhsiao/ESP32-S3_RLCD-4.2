@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | `aiusage-wireframe.html` | 現行 P0–P7（2026-11-27 頁序：P0 Claude、P1 All Detail、P2–P6 Alston／Chihyi／Grok／Ollama／AGY、P7 Trend）單色頁面、Error／Partial 狀態與互動預覽 | 修改頁面資訊架構、版面、狀態或 wireframe 驗收時 | 先按頁面名稱定位，再與主 sketch 實作互相核對 |
 | `all-detail-layout-options.html` | ALL DETAIL 五種排版離線比較稿（D 已選用） | 比較對齊表格、大字餘額、預測優先、五欄儀表與分組卡片時 | 開啟後可切換資料情境、原生尺寸或單款放大 |
-| `all-detail-d.svg`、`all-detail-d-partial.svg` | D 版面上方 258px 的 U8g2 字型輸出（正常／partial）；仍為五欄稿，韌體 2026-11-26 已改六欄 NEED_REVIEW → 同日已重新輸出六欄快照，建議歸檔此標記；2026-11-27 依新欄序 Claude／Alston／Chihyi／… 交換第 2、3 欄像素 | 檢查 P1 All Detail 目前的字型、分欄與異常狀態 | 由 `aiusage-wireframe.html` 載入，固定快照供視覺驗收 |
+| `all-detail-d.svg`、`all-detail-d-partial.svg` | D 版面上方 258px 的 U8g2 字型輸出（正常／partial）；六欄、欄序 Claude／Alston／Chihyi／Grok／Ollama／AGY（2026-11-27 交換第 2、3 欄像素） | 檢查 P1 All Detail 目前的字型、分欄與異常狀態 | 由 `aiusage-wireframe.html` 載入，固定快照供視覺驗收 |
 | `../web/aiusage-analysis.html` | 電腦端四源圖表原型（仍用舊 `codex` key），供 RLCD P2–P6 的 reset/due 與斜率語義驗收 | 修改來源圖表、reset/due 或最近 10 天視窗時 | 先確認 Web 原型，再核對 `firmware/aiusage_home/aiusage_home.ino`；五源請以韌體與 wireframe 為準 |
 | `README.md` | 人類預覽方式與單色設計約束 | 新增 UI 資產或確認預覽入口時 | 先讀設計約束與頁面表 |
 
